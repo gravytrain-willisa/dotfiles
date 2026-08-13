@@ -1,0 +1,19 @@
+#!/bin/bash
+# Once Homebrew/Linuxbrew exists, hand chezmoi's own binary over to it so
+# `brew upgrade` keeps chezmoi current alongside everything else, instead of
+# it needing a separate update path (chezmoi's built-in `chezmoi upgrade` is
+# still there as a fallback if brew isn't in the picture). run_once_after_
+# guarantees this runs last, once brew and everything else this apply
+# installs already exist — no second `chezmoi apply` needed.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+if command -v brew >/dev/null 2>&1 && ! brew list chezmoi >/dev/null 2>&1; then
+  brew install chezmoi
+  CURL_BIN="$HOME/.local/bin/chezmoi"
+  BREW_BIN="$(brew --prefix)/bin/chezmoi"
+  if [ -f "$CURL_BIN" ] && [ "$CURL_BIN" != "$BREW_BIN" ]; then
+    rm -f "$CURL_BIN"
+  fi
+fi

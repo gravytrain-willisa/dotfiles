@@ -1,0 +1,73 @@
+#!/bin/bash
+# Installs aws-vault so AWS credentials can be stored in 1Password (the
+# op-desktop backend) rather than as plaintext in ~/.aws/credentials.
+#
+# On macOS, a normal Homebrew-installed binary talks to the local 1Password
+# desktop app directly — no VM boundary to cross, op-desktop just works. The
+# 1Password CLI (`op`) still needs installing explicitly, though — it's not
+# bundled with the desktop app or aws-vault, and op-desktop's SDK integration
+# needs it present ("Integrate with 1Password CLI" checks for it) even though
+# aws-vault never shells out to `op` directly.
+#
+# On WSL, it's a different story: 1Password's desktop-app integration
+# verifies the identity of the connecting binary (an Authenticode signature
+# check on Windows), so the socat/npiperelay relay used for the SSH agent
+# (run_once_0014) won't work here — a relayed connection would appear to come
+# from npiperelay.exe, not a signed 1Password-aware binary, and get
+# rejected. Instead, aws-vault is installed as a genuine Windows binary via
+# winget and invoked through WSL's interop, so it's a real Windows process
+# talking to the Windows desktop app. See the aws-vault() shell function in
+# dot_zshrc.tmpl that makes this transparent to use.
+#
+# Being a real Windows process cuts both ways: when aws-vault.exe runs
+# `aws-vault exec <profile> -- aws ...`, it spawns that child command via a
+# native Windows CreateProcess searching %PATH% — it has no visibility into
+# WSL's filesystem or the Linuxbrew-installed `aws`. So the Windows build of
+# the AWS CLI needs installing too, purely so aws-vault.exe's child process
+# has something to find.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+{{- if eq .chezmoi.os "darwin" }}
+
+if ! brew list aws-vault >/dev/null 2>&1; then
+  brew install aws-vault
+fi
+
+if ! brew list 1password-cli >/dev/null 2>&1; then
+  brew install 1password-cli
+fi
+
+{{- else if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+
+if command -v winget.exe >/dev/null 2>&1; then
+  if ! command -v aws-vault.exe >/dev/null 2>&1; then
+    winget.exe install --id ByteNess.AWSVault -e --silent \
+      --accept-package-agreements --accept-source-agreements
+    echo "aws-vault installed via winget — if 'aws-vault.exe' isn't found in a" >&2
+    echo "new shell, restart WSL (run 'wsl --shutdown' from Windows, then" >&2
+    echo "reopen) to pick up the updated Windows PATH." >&2
+  fi
+  if ! command -v aws.exe >/dev/null 2>&1; then
+    winget.exe install --id Amazon.AWSCLI -e --silent \
+      --accept-package-agreements --accept-source-agreements
+    echo "AWS CLI installed via winget — if 'aws.exe' isn't found in a new" >&2
+    echo "shell, restart WSL (run 'wsl --shutdown' from Windows, then" >&2
+    echo "reopen) to pick up the updated Windows PATH." >&2
+  fi
+  if ! command -v op.exe >/dev/null 2>&1; then
+    winget.exe install --id AgileBits.1Password.CLI -e --silent \
+      --accept-package-agreements --accept-source-agreements
+    echo "1Password CLI installed via winget — needed to look up a vault's" >&2
+    echo "UUID for AWS_VAULT_OP_VAULT_ID (op-desktop requires one explicitly," >&2
+    echo "see README). If 'op.exe' isn't found in a new shell, restart WSL." >&2
+  fi
+else
+  echo "winget.exe not found on PATH — install these manually on the" >&2
+  echo "Windows side: winget install --id ByteNess.AWSVault -e" >&2
+  echo "             winget install --id Amazon.AWSCLI -e" >&2
+  echo "             winget install --id AgileBits.1Password.CLI -e" >&2
+fi
+
+{{- end }}

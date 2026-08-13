@@ -1,0 +1,37 @@
+#!/bin/bash
+# hash: {{ include "dot_config/dotfiles/brew-packages.txt" | sha256sum }}
+# Re-runs only when brew-packages.txt's contents change.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+# One bad formula shouldn't abort the rest of the list, so failures are
+# collected rather than aborting immediately — but the script still exits
+# non-zero at the end if any occurred. Since this only re-runs when
+# brew-packages.txt's content changes, a plain `|| true` would leave a
+# failed formula silently un-installed until the next unrelated manifest
+# edit; exiting 1 instead means chezmoi retries this whole script (already
+# idempotent — `brew install` on an installed formula is a fast no-op) on
+# the next apply.
+failures=0
+while read -r pkg; do
+  case "$pkg" in ''|'#'*) continue ;; esac
+{{- if eq .chezmoi.os "linux" }}
+  # jetbrains/junie/junie's Homebrew formula has no on_linux branch — its
+  # `url` unconditionally points at a macOS build, so `brew install` on
+  # Linuxbrew downloads and runs a Mach-O binary ("cannot execute binary
+  # file: Exec format error"). Skip it here on Linux; run_once_0021 installs
+  # it via JetBrains' own install.sh instead, which does real per-OS
+  # detection. macOS keeps using the tap below, where the formula is correct.
+  [ "$pkg" = "jetbrains/junie/junie" ] && continue
+{{- end }}
+  if ! brew install "$pkg"; then
+    echo "brew install $pkg failed — continuing with the rest of the list" >&2
+    failures=$((failures + 1))
+  fi
+done < "$HOME/.config/dotfiles/brew-packages.txt"
+
+if [ "$failures" -gt 0 ]; then
+  echo "$failures package(s) failed to install — chezmoi will retry this script on the next apply" >&2
+  exit 1
+fi

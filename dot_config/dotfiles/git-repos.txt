@@ -1,0 +1,58 @@
+# One full SSH clone URL per line, e.g. git@github.com:<org>/<repo>.git —
+# not just GitHub's shorthand, so this also supports other hosts (GitLab,
+# Bitbucket, a self-hosted server) on the same list. Blank lines and lines
+# starting with # are ignored. Auth for any host goes through the same
+# 1Password SSH agent relay (see README, "1Password as SSH vault") — no
+# per-host config needed.
+
+git@github.com:gravytrain-willisa/dotfiles.git
+git@github.com:Gravytrain-UK/broker-area.git
+git@github.com:Gravytrain-UK/gt-aws-jdbc-secrets.git
+#git@github.com:Gravytrain-UK/gt-bounce-studio.git
+git@github.com:Gravytrain-UK/gt-core-selenium-junit5.git
+#git@github.com:Gravytrain-UK/gt-coreutils.git
+git@github.com:Gravytrain-UK/gt-devops-jump-server.git
+git@github.com:Gravytrain-UK/gt-devops-standard-vpc.git
+git@github.com:Gravytrain-UK/gt-front-end-utils.git
+git@github.com:Gravytrain-UK/gt-github-codestar-management.git
+git@github.com:Gravytrain-UK/gt-github-monitoring.git
+#git@github.com:Gravytrain-UK/gt-insurance-engine-core.git
+#git@github.com:Gravytrain-UK/gt-maven-parent-pom.git
+git@github.com:Gravytrain-UK/gt-slack-notification.git
+git@github.com:Gravytrain-UK/gt-triton-cdl-client.git
+git@github.com:Gravytrain-UK/gt-triton-cdl-justice-client.git
+git@github.com:Gravytrain-UK/gt-triton-cdl-justice-openapi.git
+git@github.com:Gravytrain-UK/gt-triton-core-database.git
+git@github.com:Gravytrain-UK/gt-triton-core-testpack.git
+git@github.com:Gravytrain-UK/gt-triton-email-templates.git
+git@github.com:Gravytrain-UK/gt-triton-front-end.git
+#git@github.com:Gravytrain-UK/gt-triton-insurance-engine.git
+git@github.com:Gravytrain-UK/gt-triton-insurance-openapi.git
+git@github.com:Gravytrain-UK/gt-triton-load-testing.git
+git@github.com:Gravytrain-UK/gt-triton-payment-fakeway.git
+git@github.com:Gravytrain-UK/gt-triton-perspective-mapping.git
+git@github.com:Gravytrain-UK/gt-triton-supporting-services.git
+git@github.com:Gravytrain-UK/kgm-broker-centre-application.git
+git@github.com:Gravytrain-UK/kgm-broker-centre-database.git
+git@github.com:Gravytrain-UK/kgm-broker-centre-testpack.git
+git@github.com:Gravytrain-UK/kgm-broker-ogi-openapi.git
+git@github.com:Gravytrain-UK/kgm-broker-rdt-openapi.git
+git@github.com:Gravytrain-UK/policynode.git
+git@github.com:Gravytrain-UK/qs-database.git
+#git@github.com:Gravytrain-UK/qs-quote-engine.git
+git@github.com:Gravytrain-UK/qs-quote-engine-testpack.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/bi-quote-engine.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/bi-rs-wordpress.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/bi-rs4b-wordpress.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/bi-selenium-wordpress-static.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/bi-sysadmin-tools.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/bi-wordpress.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-ant-java-build-scripts.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-java-bounce-studio.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-java-coreutils.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-java-insurance-engine-core.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-maven-parent-pom.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/qs-quote-engine.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/qs-wordpress.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/sysadmin-tools.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/sysadmin-user-management.git

@@ -1,0 +1,28 @@
+#!/bin/bash
+# hash: {{ include "dot_config/dotfiles/pyenv-versions.txt" | sha256sum }}
+# Re-runs only when pyenv-versions.txt's contents change. Each line is
+# "version [default]" — add the literal word "default" as a second field to
+# pin which version `pyenv global` selects, same convention as
+# nvm-versions.txt/sdkman-packages.txt.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+# PYENV_ROOT stays at ~/.pyenv unconditionally — see dot_zshrc.tmpl for why
+# pointing it at `brew --prefix pyenv` (the formula/binary path, not a pyenv
+# root) is wrong.
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+if command -v brew >/dev/null 2>&1 && [ -x "$(brew --prefix pyenv 2>/dev/null)/bin/pyenv" ]; then
+  export PATH="$(brew --prefix pyenv)/bin:$PATH"
+fi
+eval "$(pyenv init -)"
+
+while read -r version flag; do
+  [ -z "$version" ] && continue
+  case "$version" in '#'*) continue ;; esac
+  pyenv install -s "$version"
+  if [ "$flag" = "default" ]; then
+    pyenv global "$version"
+  fi
+done < "$HOME/.config/dotfiles/pyenv-versions.txt"

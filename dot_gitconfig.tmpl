@@ -1,0 +1,56 @@
+# Managed by chezmoi — edit dot_gitconfig.tmpl in the dotfiles source repo,
+# not ~/.gitconfig directly (chezmoi apply overwrites local edits here).
+#
+# Deliberately minimal for now: no [includeIf] per-context identity
+# switching yet (see README, "Git config") — that needs per-context clone
+# URLs/SSH host aliases decided first, so it's left for a follow-up rather
+# than guessed at here. [user] below is a single global identity in the
+# meantime, from .chezmoidata/dotfiles.yaml.
+[user]
+  name = {{ .git.name }}
+  email = {{ .git.email }}
+{{- if .git.signing_key }}
+  signingkey = {{ .git.signing_key }}
+{{- end }}
+{{- if .git.signing_key }}
+
+# Commit signing reuses the same SSH key already sitting in the 1Password
+# agent (SSH_AUTH_SOCK, see dot_zshrc.tmpl) rather than a separate signing
+# key — GitHub lets one key be added twice, once as an "Authentication Key"
+# and once as a "Signing Key" (Settings -> SSH and GPG keys), so this needs
+# no new key generation/rotation of its own. `git.signing_key` in
+# .chezmoidata/dotfiles.yaml is the *public* key line — not a secret, safe
+# to have in this repo, same as any ~/.ssh/id_*.pub would be.
+[gpg]
+  format = ssh
+[gpg "ssh"]
+  # Which keys are trusted to sign, for *verification*. Signing works
+  # without this, but every signature then comes back untrusted (`%G?` =
+  # U, `git verify-commit` exits non-zero) and `git log --show-signature`
+  # errors that this setting needs configuring — which reads like signing
+  # is broken when it isn't. Generated from the same .chezmoidata values
+  # as [user] above, see dot_config/git/allowed_signers.tmpl.
+  allowedSignersFile = ~/.config/git/allowed_signers
+[commit]
+  gpgsign = true
+{{- end }}
+[core]
+  # false, not true, now that all real dev work happens inside WSL/macOS's
+  # own filesystem rather than native Windows tooling touching checked-out
+  # files directly (see README, "Filesystem placement" doc reference) —
+  # autocrlf's CRLF<->LF conversion exists to paper over Windows-native
+  # tools/editors that write CRLF, and nothing in this setup does that
+  # anymore. Per-repo .gitattributes (`* text=auto eol=lf`) is the actual
+  # enforcement backstop; this just stops git from doing its own
+  # additional, redundant conversion on top of that.
+  autocrlf = false
+  # Routes every ssh git does through a wrapper that sets SSH_AUTH_SOCK
+  # itself rather than trusting it to already be in the environment — an
+  # IDE's own git integration on WSL (IntelliJ, VS Code) launches git via
+  # `wsl.exe -e`, which skips login shells/PAM entirely, so neither
+  # dot_zshrc.tmpl's export nor /etc/environment (see
+  # run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl) ever reaches
+  # it — that combination previously produced "Permission denied
+  # (publickey)" from the IDE while a terminal in the same WSL instance
+  # worked fine. See dot_local/bin/executable_git-ssh-with-agent.tmpl.
+  sshCommand = {{ .chezmoi.homeDir }}/.local/bin/git-ssh-with-agent

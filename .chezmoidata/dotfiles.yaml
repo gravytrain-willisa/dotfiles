@@ -1,0 +1,66 @@
+# Shared config values referenced by templates and scripts throughout this
+# repo. Centralising the chosen shell here means every script/template that
+# needs to know "which shell did we pick" reads it from one place instead of
+# hardcoding "zsh" everywhere.
+shell: zsh
+
+git:
+  name: Andrew Willis
+  email: andrew@gravytrain.co.uk
+  # Public half of the SSH key used for commit signing (see dot_gitconfig.tmpl).
+  # Not a secret — safe to commit, same as any ~/.ssh/id_*.pub. Leave blank
+  # to skip signing entirely; dot_gitconfig.tmpl only adds [gpg]/[commit]
+  # when this is set.
+  signing_key: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAACAQDsvzARWrMEYtq4hmPiVvolrHdO6ZcoSyy1f/9zSm3APRgx2xNcQL7Mmkf9zYNJ+4BIGX73SQLO7FH0k7wKMjX7SiEW6F3MEIb/cyHCiplz8gEkURRdOEWIfG2W6Gk6d2ie+8i20D7w/EgGjmzi0MLEpikn6TBKNqkxv+ZdTIs3RuVKOsj24mK90ER0Xb2EElVKCoU06CWcUMncmaMVtmlmKqxa9RN88SSDg6kh6l1WdGl5M/ZfDiq3bp2AnXv3OmLCKcI1gqTUkrAa5S03kaPt6za6x9aHU5YJQekOR4l+H41dgbLr6Rt3hvS3F8CWC4CUVkCurNjlC09KZBOsJymVijVHPr2ISflnDIpsVC26OOHhIdxHNgSOpSCJ04LhRfI5jsKvKBaGx0intPnkfSktKkBmMMGIW+1Iz8KIh5NymqkPUSrAXZGlYqP9qu8tfZBUtNAN6/JQawgLbvpy00ek+HIYUJ64N2lOI7PNior7yj/OF9sZJLlce1nSDMoBX3dut+9alDvtsUA1Ppa53OW/FJ7y+m+/liMS3Uos0sYsLCu0/MttMiAiKf9qEJ9EGteIIQjqGjl35EcYzT0lSNgtCAAYZjToL9pSTFCL2KcsscqYfFj0P4IKm60ccqqtUSxfdLtSFeeOvWRmNT87QYPu4sgClbvJs6XTcNy4HiWqdw=="
+
+aws:
+  default_region: eu-west-2
+
+# Keyed by aws-vault profile name (the argument to `aws-login`), each mapped
+# to a LIST of domain configs — one profile/account can have more than one
+# CodeArtifact domain (e.g. two unrelated domains both reachable via the
+# `gravytrain` profile). `npm_scopes` is only set for domains that back an
+# npm registry — when set, `codeartifact_auth` (dot_zshrc.tmpl) writes the
+# `${<env>}`-placeholder npm config for each listed scope against that
+# domain's repository (a single CodeArtifact repository can be the upstream
+# for more than one npm scope); when unset (e.g. a Maven/Gradle-backed
+# domain) it just exports the token and skips npm entirely. `env` names the
+# variable the token is exported as; defaults to CODEARTIFACT_AUTH_TOKEN
+# when omitted — give every domain within the same profile a distinct `env`
+# if more than one of them is npm-backed, otherwise their tokens will
+# clobber each other in the shared default var.
+codeartifact:
+  gravytrain:
+    - domain: gravytrain
+      repository: Triton
+      npm_scopes: [gravytrain]
+  kgm:
+    - domain: kgm
+      repository: java
+      env: KGM_CODEARTIFACT_AUTH_TOKEN
+
+rds:
+  # Stable prefix shared by every stage's cluster identifier for each
+  # system — each stage prepends its own name (dev-/staging-/prod-) and RDS
+  # appends an opaque generated suffix, e.g.
+  # prod-gt-triton-core-database-coredatabasecluster-0ee0jjp507zm.
+  systems:
+    kgm: kgm-broker-centre-databas
+    triton: gt-triton-core-database
+  # SSH user the jump box expects, used by connect-to-aws-jump-server.sh.tmpl.
+  jump_user: gtjump
+
+# Direct (non-jump-box) servers — keyed by the alias name dot_zshrc.tmpl
+# generates for each (`alias <key>='ssh ubuntu@<value>'`). All reachable as
+# `ubuntu` using whichever key the 1Password SSH agent offers (see
+# dot_zshrc.tmpl's "1Password SSH agent" section) — no per-server user or
+# identity file, so a flat name->hostname map is all this needs.
+servers:
+  bi-app-dev: app.dev.bf1.grvytrn.co.uk
+  bi-app-prod: app.prod.bf1.grvytrn.co.uk
+  bi-web-dev: web.dev.bf2.bedfordinsurance.co.uk
+  bi-web-prod: web.prod.bf2.bedfordinsurance.co.uk
+  qs-app-dev: app.dev.qs1.grvytrn.co.uk
+  qs-app-prod: app.prod.qs1.grvytrn.co.uk
+  qs-web-dev: web.dev.qs1.grvytrn.co.uk
+  qs-web-prod: web.prod.qs1.grvytrn.co.uk

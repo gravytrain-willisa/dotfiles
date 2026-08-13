@@ -1,0 +1,24 @@
+#!/bin/bash
+# Managed by chezmoi — edit dot_local/bin/executable_git-ssh-with-agent.tmpl
+# in the dotfiles source repo, not this file directly.
+#
+# git's core.sshCommand (set in dot_gitconfig.tmpl) points at this wrapper
+# instead of ssh directly. Why: SSH_AUTH_SOCK is normally exported by
+# dot_zshrc.tmpl (interactive shells) or /etc/environment (everything else,
+# via run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl) — but an IDE's
+# own git integration (IntelliJ, VS Code) on WSL invokes git by calling
+# wsl.exe directly, e.g. `wsl.exe -d Ubuntu-26.04 -e git ...`. That launch
+# path execs the target command straight away rather than going through a
+# login shell, so it never runs PAM and never reads /etc/environment either
+# — confirmed by testing `wsl.exe -e printenv SSH_AUTH_SOCK` from inside WSL,
+# which comes back empty even with the relay running and /etc/environment
+# correctly set. Every other fix here still leaves git with no
+# SSH_AUTH_SOCK, hence "Permission denied (publickey)" from the IDE while a
+# terminal in the same WSL instance works fine.
+#
+# The template below is shared with ~/.zshrc's own agent setup — same
+# liveness probe/relay-restart logic, just invoked here without relying on
+# any inherited environment at all, so it's correct no matter how git itself
+# was launched.
+{{ template "ssh-agent-sock.sh.tmpl" . }}
+exec ssh "$@"

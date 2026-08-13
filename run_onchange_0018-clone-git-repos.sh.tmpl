@@ -1,0 +1,119 @@
+#!/bin/bash
+{{ $manifest := print (include "dot_config/dotfiles/git-repos.txt") (include "dot_config/dotfiles/beanstalk-github-migrations.txt") }}
+# hash: {{ $manifest | sha256sum }}
+# Re-runs when git-repos.txt OR beanstalk-github-migrations.txt changes — a
+# newly-added migration pair needs re-evaluating even if git-repos.txt
+# itself didn't change. Each git-repos.txt line is a full SSH clone URL
+# (e.g. git@github.com:<org>/<repo>.git) rather than just GitHub's
+# `<org>/<repo>` shorthand, so this supports any host — GitLab, Bitbucket, a
+# self-hosted server — on the same list, not just GitHub. Clones land in
+# ~/projects/<repo>, one directory per repo, named from the URL's last path
+# segment with any `.git` suffix stripped.
+#
+# Clones over SSH, not `gh repo clone` — this deliberately doesn't depend on
+# the `gh` CLI being authenticated at all (and wouldn't even apply to a
+# non-GitHub host). SSH auth goes through the 1Password SSH agent relay from
+# "1Password as SSH vault" above, which is already required for any git
+# push/pull regardless of host, so cloning works the moment that's set up.
+#
+# Only clones repos that aren't already present — this is additive like the
+# other manifests (removing a line here doesn't delete an already-cloned
+# checkout), and re-cloning an existing directory would just fail outright.
+#
+# Multi-host means a first-ever connection to a host not already in
+# ~/.ssh/known_hosts (e.g. a Beanstalk/GitLab/self-hosted server never
+# cloned from before) would otherwise block on "The authenticity of host
+# ... can't be established ... Are you sure you want to continue connecting
+# (yes/no/[fingerprint])?" — fatal for a non-interactive script, since
+# there's no stdin to answer it. Handled globally now via
+# `StrictHostKeyChecking accept-new` in private_dot_ssh/config.tmpl, so
+# nothing script-specific is needed here any more.
+set -euo pipefail
+
+# chezmoi runs this with bash, non-interactively — ~/.zshrc is never sourced,
+# so the relay it would have started isn't running and SSH_AUTH_SOCK isn't
+# set. On a first-ever apply that's guaranteed: step 13 only *installs* socat
+# and npiperelay a few steps earlier, and no zsh has existed since. Without
+# this, every clone below fails "Permission denied (publickey)".
+{{ template "ssh-agent-sock.sh.tmpl" . }}
+
+# Fail once, clearly, rather than as N identical clone failures — and before
+# creating any directories. Catches both "agent unreachable" and "agent
+# reachable but holds no keys" (ssh-add -l exits 2 and 1 respectively).
+if ! ssh-add -l >/dev/null 2>&1; then
+  echo "No SSH key available from the agent (SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-<unset>})." >&2
+  echo "Enable 1Password -> Settings -> Developer -> 'Use the SSH Agent' (a GUI" >&2
+  echo "toggle, it can't be scripted), then re-run 'chezmoi apply -v' — a script" >&2
+  echo "that failed isn't recorded as having run, so it retries on its own." >&2
+  exit 1
+fi
+
+PROJECTS_DIR="$HOME/projects"
+mkdir -p "$PROJECTS_DIR"
+
+failures=0
+while read -r url; do
+  case "$url" in ''|'#'*) continue ;; esac
+  repo="$(basename "$url" .git)"
+  dest="$PROJECTS_DIR/$repo"
+  if [ -d "$dest" ]; then
+    echo "Skipping $url — already cloned at $dest"
+    continue
+  fi
+  echo "Cloning $url into $dest..."
+  # Non-fatal per repo, matching the other manifest-driven scripts: the
+  # preflight above already proved the agent works, so a single failure here
+  # is that one repo (access not granted, renamed, deleted) and shouldn't
+  # abort the apply — and so the rest of the list — on its way past. The
+  # script still exits non-zero at the end if any clone failed, though (see
+  # below), so chezmoi retries it on the next apply rather than that repo
+  # staying silently uncloned until git-repos.txt itself happens to change
+  # again.
+  if ! git clone "$url" "$dest"; then
+    echo "Failed to clone $url — skipping" >&2
+    failures=$((failures + 1))
+  fi
+done < "$HOME/.config/dotfiles/git-repos.txt"
+
+# Beanstalk -> GitHub migrations — for each repo mid-migration, once it's
+# cloned (from beanstalk, above), rename its main/master branch to
+# `<branch>-beanstalk`, rename `origin` to `beanstalk`, and add a fresh
+# `origin` pointing at the GitHub URL. Idempotent via the `beanstalk` remote
+# check, so re-running this after the migration already happened is a
+# no-op, and a repo not yet cloned (line missing/commented in git-repos.txt)
+# is skipped rather than failing.
+while read -r beanstalk_url github_url; do
+  case "$beanstalk_url" in ''|'#'*) continue ;; esac
+  repo="$(basename "$beanstalk_url" .git)"
+  dest="$PROJECTS_DIR/$repo"
+  if [ ! -d "$dest" ]; then
+    echo "Skipping $repo migration — not cloned yet"
+    continue
+  fi
+  if git -C "$dest" remote get-url beanstalk >/dev/null 2>&1; then
+    echo "Skipping $repo migration — already migrated"
+    continue
+  fi
+
+  migrated_branch=""
+  for branch in main master; do
+    if git -C "$dest" show-ref --verify --quiet "refs/heads/$branch"; then
+      git -C "$dest" branch -m "$branch" "${branch}-beanstalk"
+      migrated_branch="$branch"
+      break
+    fi
+  done
+  if [ -z "$migrated_branch" ]; then
+    echo "Skipping $repo migration — no main or master branch found" >&2
+    continue
+  fi
+
+  git -C "$dest" remote rename origin beanstalk
+  git -C "$dest" remote add origin "$github_url"
+  echo "Migrated $repo: $migrated_branch -> ${migrated_branch}-beanstalk, origin -> beanstalk, new origin -> $github_url"
+done < "$HOME/.config/dotfiles/beanstalk-github-migrations.txt"
+
+if [ "$failures" -gt 0 ]; then
+  echo "$failures repo(s) failed to clone — chezmoi will retry this script on the next apply" >&2
+  exit 1
+fi

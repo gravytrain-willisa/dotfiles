@@ -1,0 +1,35 @@
+#!/bin/bash
+# Installs the chosen shell ({{ .shell }}) and makes it the user's default
+# login shell. {{ .shell }} is read from .chezmoidata/dotfiles.yaml so every
+# other script/template in this repo can key off the same choice instead of
+# hardcoding a shell name.
+set -euo pipefail
+
+SHELL_NAME="{{ .shell }}"
+
+{{- if eq .chezmoi.os "linux" }}
+if ! command -v "$SHELL_NAME" >/dev/null 2>&1; then
+  sudo apt-get update
+  sudo apt-get install -y "$SHELL_NAME"
+fi
+{{- else if eq .chezmoi.os "darwin" }}
+if ! command -v "$SHELL_NAME" >/dev/null 2>&1; then
+  echo "warning: $SHELL_NAME not found and macOS has no apt equivalent here — install it via Homebrew (brew-packages.txt) first" >&2
+fi
+{{- end }}
+
+SHELL_PATH="$(command -v "$SHELL_NAME" || true)"
+
+if [ -n "$SHELL_PATH" ] && [ "${SHELL:-}" != "$SHELL_PATH" ]; then
+  if ! grep -qx "$SHELL_PATH" /etc/shells 2>/dev/null; then
+    {{- if eq .chezmoi.os "linux" }}
+    # The validating helper installed by run_once_before_0000 — not a bare
+    # `tee`, since sudoers can't restrict what's piped into one; see that
+    # script's comments. Only exists on Linux, where that NOPASSWD rule is.
+    sudo /usr/local/sbin/dotfiles-append-shell "$SHELL_PATH"
+    {{- else }}
+    echo "$SHELL_PATH" | sudo tee -a /etc/shells >/dev/null
+    {{- end }}
+  fi
+  sudo chsh -s "$SHELL_PATH" "$(whoami)" 2>/dev/null || chsh -s "$SHELL_PATH"
+fi

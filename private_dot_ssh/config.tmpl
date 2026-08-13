@@ -1,0 +1,24 @@
+# Managed by chezmoi — edit private_dot_ssh/config.tmpl in the dotfiles
+# source repo, not ~/.ssh/config directly (chezmoi apply overwrites local
+# edits here). "private_" keeps the ~/.ssh directory itself at 0700, same as
+# ssh expects regardless of what's actually secret inside it.
+#
+# Deliberately minimal for now: no per-host Host blocks or identity pinning
+# (IdentitiesOnly + IdentityFile) yet. That only earns its keep once there's
+# more than one key in the 1Password agent to disambiguate between, and
+# doing it properly means per-host aliases (`git@github.com-gravytrain:...`
+# instead of `git@github.com:...`) the same way ~/.gitconfig's per-context
+# includeIf would need — see README, "Git config" — which is explicitly
+# deferred for now rather than guessed at. Revisit both together.
+#
+# What's worth setting globally today: every host gets its key checked
+# through the 1Password agent relay (SSH_AUTH_SOCK, set in dot_zshrc.tmpl),
+# so there's no local on-disk key to pin anyway.
+Host *
+  # Auto-trust a host's key on first connection (adding it to
+  # known_hosts), then verify against that stored key on every later
+  # connection — unlike StrictHostKeyChecking=no, this doesn't blanket
+  # disable MITM protection going forward. Set globally here rather than
+  # per-script so it covers plain interactive `ssh` too, not just scripted
+  # clones/connections.
+  StrictHostKeyChecking accept-new

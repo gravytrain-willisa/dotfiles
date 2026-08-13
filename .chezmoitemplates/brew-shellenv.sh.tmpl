@@ -1,0 +1,17 @@
+{{/* Reusable snippet: put brew on PATH within a run_* script's own shell.
+     Included via {{ template "brew-shellenv.sh.tmpl" . }} */ -}}
+{{- if eq .chezmoi.os "darwin" }}
+eval "$(/opt/homebrew/bin/brew shellenv 2>/dev/null || /usr/local/bin/brew shellenv 2>/dev/null)" || true
+{{- else }}
+eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv 2>/dev/null)" || true
+{{- end }}
+
+# `brew install` prompts to confirm once a formula pulls in more than a
+# couple of dependencies ("Do you want to proceed with the installation?
+# [y/n]") — with no tty attached, `chezmoi apply` runs these scripts
+# non-interactively, so that prompt either hangs or reads EOF as "n" and
+# aborts, and callers that do `brew install "$pkg" || echo ...failed`
+# swallow the resulting failure instead of surfacing it. NONINTERACTIVE=1
+# makes brew skip the confirmation instead of waiting for input that will
+# never come.
+export NONINTERACTIVE=1

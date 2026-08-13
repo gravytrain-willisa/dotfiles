@@ -1,0 +1,21 @@
+#!/bin/bash
+# Installs Homebrew (macOS) / Linuxbrew (WSL/Linux). Linuxbrew needs a
+# handful of apt packages present first; Homebrew's own installer handles
+# Xcode CLT prompts on macOS, so no apt-equivalent step is needed there.
+set -euo pipefail
+
+{{- if eq .chezmoi.os "linux" }}
+
+if ! command -v brew >/dev/null 2>&1 && [ ! -d "/home/linuxbrew/.linuxbrew" ]; then
+  sudo apt-get update
+  sudo apt-get install -y build-essential procps curl file git
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+
+{{- else if eq .chezmoi.os "darwin" }}
+
+if ! command -v brew >/dev/null 2>&1 && [ ! -d "/opt/homebrew" ] && [ ! -d "/usr/local/Homebrew" ]; then
+  NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+fi
+
+{{- end }}

@@ -1,0 +1,11 @@
+# Managed by chezmoi — edit dot_aws/config.tmpl in the dotfiles source repo,
+# not this file directly (chezmoi apply will overwrite local edits here).
+#
+# This only covers the [default] profile (i.e. plain `aws ...` with no
+# --profile/AWS_PROFILE). Named profiles (aws-vault or otherwise) do NOT
+# inherit region from [default] — each needs its own `region =` line under
+# its own [profile <name>] section here if you want it pinned per-profile.
+# The AWS_DEFAULT_REGION/AWS_REGION fallback exported in dot_zshrc.tmpl is
+# what actually covers "any profile missing a region", regardless of name.
+[default]
+region = {{ .aws.default_region }}

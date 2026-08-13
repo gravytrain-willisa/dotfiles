@@ -1,0 +1,247 @@
+#!/bin/bash
+{{- if eq .chezmoi.os "linux" }}
+# A first-ever `chezmoi apply` needs sudo in several separate scripts — zsh,
+# Homebrew's apt prerequisites, `unzip` for SDKMAN, pyenv's build deps,
+# `socat`, registering the SSH agent relay's SSH_AUTH_SOCK in
+# /etc/environment, and `chsh` at the handoff — and a plain raised sudo
+# timestamp_timeout turned out not to be reliable here (see below), so this
+# grants passwordless sudo for exactly those commands instead: no cached
+# credential to expire, no tty/session/process-group games to get wrong.
+#
+# Runs FIRST, before every other script — hence `before_0000`, with the rest
+# of the install sequence starting at `before_0001-install-zsh` — so the
+# NOPASSWD rules are already in place by the time anything else needs them.
+#
+# Never edits /etc/sudoers directly — a syntax error there can lock sudo out
+# entirely — it writes to a temp file, validates it with `sudo visudo -cf`,
+# and only installs it if that passes. This first install (and only this
+# one) still prompts for a password normally, since the NOPASSWD rule it's
+# installing doesn't exist yet to cover the install itself.
+#
+# Removed again at the very end of the apply, once every script that needs
+# it has run — see run_once_after_0022-remove-sudo-timeout.sh.tmpl. But
+# chezmoi aborts the *entire* remaining apply the moment any one script
+# exits non-zero (verified empirically), so a failure in any script between
+# this one and 0022 — a flaky network install, a bad package — would
+# otherwise leave the NOPASSWD rule installed indefinitely, silently,
+# forever, with 0022 never reached to clean it up.
+#
+# A background timer sounds like the fix, but doesn't hold up: a systemd
+# transient unit needs systemd actually running as PID 1, which isn't
+# guaranteed on WSL2 (opt-in via `systemd=true` in /etc/wsl.conf, and this
+# repo has never required it — the persistent SSH-relay service in
+# run_onchange_0020 already treats systemd as best-effort, not a hard
+# dependency), doesn't survive a `wsl --shutdown`/reboot before it fires
+# (transient units are runtime-only), and scheduling it with `set -e` still
+# active would abort this entire script — and thus the whole apply, on the
+# very first script — if `systemd-run` itself failed for any reason. A
+# plain detached background process has the same reboot-survival gap
+# without even the "might not have systemd" problem, so it isn't better.
+#
+# The real backstop lives in dot_zshrc.tmpl (same shared snippet, see
+# .chezmoitemplates/sudo-timeout-backstop.sh.tmpl): every new interactive
+# shell checks whether this sudoers file still exists and whether the PID
+# recorded in ~/.cache/dotfiles-sudo-timeout.pid (below) is still alive —
+# only removing the rule once that process is gone, so a genuinely
+# long-running apply (a slow Homebrew or pyenv build) is never interrupted
+# regardless of how many hours it takes, while a failed/aborted apply gets
+# cleaned up on the very next shell with no arbitrary wait at all.
+#
+# But dot_zshrc.tmpl is itself only *installed* by a later, ordinary
+# managed-file step in this same apply — if any run_once_before_* script
+# after this one (zsh install, Homebrew, ...) fails, chezmoi aborts before
+# ever writing ~/.zshrc for the first time, and the backstop in it would
+# never even exist to run. So this script also writes that exact same
+# function straight into ~/.zshrc itself, in plain shell, right below,
+# bypassing chezmoi's own file-management step entirely — it's in place
+# from the instant the sudoers rule is, no matter what happens afterward.
+# When chezmoi does later get to manage ~/.zshrc normally, it overwrites
+# the whole file with dot_zshrc.tmpl's rendered content anyway, which
+# includes this same function — so there's nothing left to reconcile.
+#
+# What didn't work, for the record (don't re-attempt these):
+#   - Raising sudo's timestamp_timeout (Ubuntu's default is 15 min) via a
+#     per-user `Defaults:user timestamp_timeout=60` drop-in. This distro
+#     ships sudo-rs (the Rust reimplementation of sudo, now default on
+#     recent Ubuntu WSL images — recognizable by its nonstandard
+#     `[sudo: authenticate] Password:` prompt, versus classic sudo's
+#     `[sudo] password for <user>:`). Per-user `Defaults:user ...` entries
+#     parse cleanly under sudo-rs 0.2.13 (`visudo -cf` accepts them) but are
+#     silently ignored at runtime — a global `Defaults timestamp_timeout=60`
+#     line (no username) is required instead.
+#   - Even with a global timestamp_timeout, a background loop refreshing the
+#     credential (`sudo -n -v` every 60s) so no later script re-authenticates
+#     mid-apply. Backgrounding with `disown` doesn't survive: chezmoi runs
+#     each script as its own process group and cleans up that whole group
+#     once the script exits, killing a plain `&`-backgrounded child
+#     regardless of `disown` (`disown` only stops bash itself from sending
+#     SIGHUP on exit — it does nothing against an external process-group
+#     kill). Detaching with `setsid` survives the process-group cleanup, but
+#     most likely then fails at the one thing it exists to do — sudo-rs's
+#     timestamp record is scoped to the terminal you authenticated in
+#     (`tty_tickets` and its replacement `timestamp_type=global`, either of
+#     which would share the cached credential more broadly, are rejected
+#     outright as unknown settings under sudo-rs 0.2.13), and `setsid`
+#     detaches from the controlling terminal entirely — so `sudo -n -v` run
+#     from inside that new session has no matching credential to refresh.
+set -euo pipefail
+
+# Explain the prompt before it appears, rather than letting an unexplained
+# `[sudo: authenticate] Password:` be the first thing a fresh install shows.
+# `sudo -n true` is the non-interactive probe for "already cached?" — silent
+# no-op on a re-run or when credentials are still warm.
+if ! sudo -n true 2>/dev/null; then
+  echo "Setup needs sudo once (to install the NOPASSWD rule below) — after"
+  echo "that, none of the apt/chsh steps in this apply should prompt again."
+fi
+
+SUDOERS_FILE="/etc/sudoers.d/dotfiles-sudo-timeout"
+SUDOERS_TMP="$(mktemp)"
+trap 'rm -f "$SUDOERS_TMP"' EXIT
+
+# Scoped to the exact commands this repo's scripts run as sudo — not a
+# blanket NOPASSWD ALL, and (deliberately) not a `apt-get install -y *`
+# wildcard either: that would let anything holding this rule apt-get
+# install an arbitrary package, whose root-run maintainer scripts are a
+# straightforward privilege-escalation path in their own right — no
+# different in practice from NOPASSWD ALL for the duration this rule is
+# installed. Instead, each `apt-get install -y ...` line below is an exact
+# match for one specific invocation elsewhere in this repo — same package
+# list, same order — so only those five known installs skip the password
+# prompt; anything else still prompts normally. `chsh -s *` keeps its
+# wildcard (the shell *path* varies by install location, not by what's
+# being installed) since chsh only changes the caller's own login shell,
+# not root-run code.
+#
+# `tee -a /etc/shells` / `tee -a /etc/environment` would also be exact
+# command/argument matches, but sudoers can only restrict the command and
+# its arguments, not what's piped into its stdin — a bare `tee` grant would
+# let anything holding this rule append arbitrary lines to those two files
+# no matter how exact the arguments are. So neither script below uses `tee`
+# for this at all: instead this installs two tiny root-owned helper scripts
+# (below) that take the line to append as an argument and validate its
+# *shape* against an allowlist before writing anything — a shell path under
+# a known bin directory, or a literal `SSH_AUTH_SOCK=...` line — refusing
+# anything else. Because the helpers themselves are root-owned and not
+# writable by this user, holding the sudo rule to run them isn't the same
+# as holding the ability to write anything into those files; the validation
+# can't be bypassed by whatever argument the rule is invoked with.
+#
+# If a future script needs a new sudo command, add its exact invocation
+# here rather than reaching for a broader wildcard, and keep this list in
+# sync with the scripts below by hand — a stale/missing entry only costs an
+# extra password prompt, never a security regression.
+cat >"$SUDOERS_TMP" <<EOF
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get update
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get install -y {{ .shell }}
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get install -y build-essential procps curl file git
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get install -y unzip zip
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get install -y socat
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get install -y make build-essential libssl-dev zlib1g-dev libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/local/sbin/dotfiles-append-shell *
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/local/sbin/dotfiles-append-environment *
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/chsh -s *
+EOF
+
+if sudo visudo -cf "$SUDOERS_TMP"; then
+  sudo install -m 0440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_FILE"
+else
+  echo "Generated sudoers snippet failed validation — not installing $SUDOERS_FILE" >&2
+  exit 1
+fi
+
+# The two helpers referenced above. Root-owned (0755, root:root) so this
+# user can run them via the NOPASSWD rule but can't edit them to skip their
+# own validation — installed the same validate-then-install way as the
+# sudoers file itself (temp file, syntax-checked, then `sudo install`).
+# Wildcarding the argument in the sudoers rule is safe specifically because
+# these scripts validate that argument themselves before doing anything;
+# unlike `tee`, refusing an unexpected shape is the whole point of routing
+# through a script instead of a bare command.
+APPEND_SHELL_TMP="$(mktemp)"
+trap 'rm -f "$SUDOERS_TMP" "$APPEND_SHELL_TMP"' EXIT
+cat >"$APPEND_SHELL_TMP" <<'HELPER'
+#!/bin/bash
+# Installed by run_once_before_0000-configure-sudo-timeout.sh.tmpl — appends
+# a login-shell path to /etc/shells, but only if it looks like one: an
+# absolute path under a directory shells actually get installed to here
+# (apt's /usr/bin or /bin, Homebrew's /opt/homebrew, /usr/local, or
+# Linuxbrew's /home/linuxbrew/.linuxbrew), and an executable file, not a
+# symlink into somewhere unexpected.
+set -euo pipefail
+path="$1"
+case "$path" in
+  *$'\n'*)
+    echo "dotfiles-append-shell: refusing multi-line argument" >&2
+    exit 1
+    ;;
+  /usr/bin/*|/bin/*|/usr/local/bin/*|/opt/homebrew/bin/*|/home/linuxbrew/.linuxbrew/bin/*) ;;
+  *)
+    echo "dotfiles-append-shell: refusing unexpected path: $path" >&2
+    exit 1
+    ;;
+esac
+[ -x "$path" ] || { echo "dotfiles-append-shell: not an executable file: $path" >&2; exit 1; }
+grep -qxF "$path" /etc/shells 2>/dev/null && exit 0
+echo "$path" >>/etc/shells
+HELPER
+bash -n "$APPEND_SHELL_TMP"
+sudo install -m 0755 -o root -g root "$APPEND_SHELL_TMP" /usr/local/sbin/dotfiles-append-shell
+
+APPEND_ENV_TMP="$(mktemp)"
+trap 'rm -f "$SUDOERS_TMP" "$APPEND_SHELL_TMP" "$APPEND_ENV_TMP"' EXIT
+cat >"$APPEND_ENV_TMP" <<'HELPER'
+#!/bin/bash
+# Installed by run_once_before_0000-configure-sudo-timeout.sh.tmpl — appends
+# a line to /etc/environment, but only if it's a `SSH_AUTH_SOCK=...`
+# assignment (the one thing this repo ever needs to add there, for the
+# 1Password SSH agent relay). Anything else is refused.
+set -euo pipefail
+line="$1"
+case "$line" in
+  *$'\n'*)
+    echo "dotfiles-append-environment: refusing multi-line argument" >&2
+    exit 1
+    ;;
+  SSH_AUTH_SOCK=*) ;;
+  *)
+    echo "dotfiles-append-environment: refusing unexpected line: $line" >&2
+    exit 1
+    ;;
+esac
+grep -qxF "$line" /etc/environment 2>/dev/null && exit 0
+echo "$line" >>/etc/environment
+HELPER
+bash -n "$APPEND_ENV_TMP"
+sudo install -m 0755 -o root -g root "$APPEND_ENV_TMP" /usr/local/sbin/dotfiles-append-environment
+
+# Record chezmoi's own PID (our immediate parent — chezmoi execs scripts
+# directly, no intermediate shell) so the backstop below can tell "apply
+# still running" apart from "apply finished or died" without guessing at a
+# timeout. Paired with that PID's own start time (/proc/<pid>'s mtime is
+# set once, at process start) so a later, unrelated process that happens to
+# reuse this same PID after chezmoi exits can't be mistaken for it — the
+# backstop checks both together. See its comment for the full reasoning.
+mkdir -p "$HOME/.cache"
+APPLY_START="$(stat -c %Y "/proc/$PPID" 2>/dev/null)"
+echo "$PPID $APPLY_START" >"$HOME/.cache/dotfiles-sudo-timeout.pid"
+
+# Belt-and-suspenders copy of the backstop function itself, written
+# directly rather than through chezmoi's normal file-management step — see
+# the comment above for why. Idempotent: skips if a prior run already added
+# it (re-running this script by hand, e.g. after `chezmoi state
+# delete-bucket`, shouldn't duplicate the block).
+ZSHRC="$HOME/.zshrc"
+BACKSTOP_MARKER="# dotfiles-sudo-timeout-backstop"
+if [ ! -f "$ZSHRC" ] || ! grep -qF "$BACKSTOP_MARKER" "$ZSHRC" 2>/dev/null; then
+  {
+    echo ""
+    echo "$BACKSTOP_MARKER — written directly by"
+    echo "run_once_before_0000-configure-sudo-timeout.sh.tmpl; superseded by the"
+    echo "identical copy in dot_zshrc.tmpl once chezmoi manages this file normally."
+    cat <<'BACKSTOP'
+{{ template "sudo-timeout-backstop.sh.tmpl" . }}
+BACKSTOP
+  } >>"$ZSHRC"
+fi
+{{- end }}

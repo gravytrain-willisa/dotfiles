@@ -1,0 +1,18 @@
+# Configuration file for EditorConfig: http://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+indent_style = space
+indent_size = 2
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+# git's own files are conventionally tab-indented — matches git's own output
+# (e.g. `git config` file edits) rather than fighting it on every save.
+[dot_gitconfig.tmpl]
+indent_style = tab
+
+[.gitattributes]
+indent_style = tab
