@@ -1,0 +1,78 @@
+#!/bin/bash
+{{- if eq .chezmoi.os "linux" }}
+# A first-ever `chezmoi apply` needs sudo in several separate scripts — zsh,
+# Homebrew's apt prerequisites, `unzip` for SDKMAN, pyenv's build deps,
+# `socat`, and `chsh` at the handoff — and a plain raised sudo
+# timestamp_timeout turned out not to be reliable here (see below), so this
+# grants passwordless sudo for exactly those commands instead: no cached
+# credential to expire, no tty/session/process-group games to get wrong.
+#
+# Runs FIRST, before every other script — hence `before_0000`, with the rest
+# of the install sequence starting at `before_0001-install-zsh` — so the
+# NOPASSWD rules are already in place by the time anything else needs them.
+#
+# Never edits /etc/sudoers directly — a syntax error there can lock sudo out
+# entirely — it writes to a temp file, validates it with `sudo visudo -cf`,
+# and only installs it if that passes. This first install (and only this
+# one) still prompts for a password normally, since the NOPASSWD rule it's
+# installing doesn't exist yet to cover the install itself.
+#
+# What didn't work, for the record (don't re-attempt these):
+#   - Raising sudo's timestamp_timeout (Ubuntu's default is 15 min) via a
+#     per-user `Defaults:user timestamp_timeout=60` drop-in. This distro
+#     ships sudo-rs (the Rust reimplementation of sudo, now default on
+#     recent Ubuntu WSL images — recognizable by its nonstandard
+#     `[sudo: authenticate] Password:` prompt, versus classic sudo's
+#     `[sudo] password for <user>:`). Per-user `Defaults:user ...` entries
+#     parse cleanly under sudo-rs 0.2.13 (`visudo -cf` accepts them) but are
+#     silently ignored at runtime — a global `Defaults timestamp_timeout=60`
+#     line (no username) is required instead.
+#   - Even with a global timestamp_timeout, a background loop refreshing the
+#     credential (`sudo -n -v` every 60s) so no later script re-authenticates
+#     mid-apply. Backgrounding with `disown` doesn't survive: chezmoi runs
+#     each script as its own process group and cleans up that whole group
+#     once the script exits, killing a plain `&`-backgrounded child
+#     regardless of `disown` (`disown` only stops bash itself from sending
+#     SIGHUP on exit — it does nothing against an external process-group
+#     kill). Detaching with `setsid` survives the process-group cleanup, but
+#     most likely then fails at the one thing it exists to do — sudo-rs's
+#     timestamp record is scoped to the terminal you authenticated in
+#     (`tty_tickets` and its replacement `timestamp_type=global`, either of
+#     which would share the cached credential more broadly, are rejected
+#     outright as unknown settings under sudo-rs 0.2.13), and `setsid`
+#     detaches from the controlling terminal entirely — so `sudo -n -v` run
+#     from inside that new session has no matching credential to refresh.
+set -euo pipefail
+
+# Explain the prompt before it appears, rather than letting an unexplained
+# `[sudo: authenticate] Password:` be the first thing a fresh install shows.
+# `sudo -n true` is the non-interactive probe for "already cached?" — silent
+# no-op on a re-run or when credentials are still warm.
+if ! sudo -n true 2>/dev/null; then
+  echo "Setup needs sudo once (to install the NOPASSWD rule below) — after"
+  echo "that, none of the apt/chsh steps in this apply should prompt again."
+fi
+
+SUDOERS_FILE="/etc/sudoers.d/dotfiles-sudo-timeout"
+SUDOERS_TMP="$(mktemp)"
+trap 'rm -f "$SUDOERS_TMP"' EXIT
+
+# Scoped to the exact commands this repo's scripts run as sudo — not a
+# blanket NOPASSWD ALL. Wildcards cover the varying bits (package names in
+# `apt-get install`, the shell path and username in `chsh`); everything else
+# is an exact match. If a future script needs a new sudo command, add it
+# here rather than reaching for a broader wildcard.
+cat >"$SUDOERS_TMP" <<EOF
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get update
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/apt-get install -y *
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/tee -a /etc/shells
+{{ .chezmoi.username }} ALL=(root) NOPASSWD: /usr/bin/chsh -s *
+EOF
+
+if sudo visudo -cf "$SUDOERS_TMP"; then
+  sudo install -m 0440 -o root -g root "$SUDOERS_TMP" "$SUDOERS_FILE"
+else
+  echo "Generated sudoers snippet failed validation — not installing $SUDOERS_FILE" >&2
+  exit 1
+fi
+{{- end }}

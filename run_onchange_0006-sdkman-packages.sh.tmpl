@@ -1,0 +1,43 @@
+#!/bin/bash
+# hash: {{ include "dot_config/dotfiles/sdkman-packages.txt" | sha256sum }}
+# Re-runs only when sdkman-packages.txt's contents change. Each line is
+# "candidate version [default]" — add the literal word "default" as a third
+# field to pin which version `sdk default` selects when a candidate (e.g.
+# java) has more than one line, instead of relying on install order.
+# No -u: sdkman-init.sh references optional env vars without defaults and
+# assumes nounset is off.
+set -eo pipefail
+
+# SDKMAN's own vendored sdkman-path-helpers.sh unconditionally uses
+# ${var^^} (bash 4+ case conversion) whenever it exports a candidate's
+# _HOME env var — on every `sdk install`/`sdk use`/`sdk default` call, not
+# some edge case. macOS's stock /bin/bash is 3.2 and can't parse that
+# ("bad substitution"), crashing this script outright. Re-exec under the
+# modern bash brew-packages.txt already installs — guaranteed present,
+# since this script's run_onchange number sorts after 0004-brew-packages —
+# before sourcing sdkman-init.sh. No-ops on WSL/Linuxbrew, whose /bin/bash
+# is already 4+.
+BREW_BASH=""
+if command -v brew >/dev/null 2>&1; then
+  BREW_BASH="$(brew --prefix bash 2>/dev/null)/bin/bash"
+fi
+if [ -z "${SDKMAN_MODERN_BASH_REEXEC:-}" ] && [ -n "$BREW_BASH" ] && [ -x "$BREW_BASH" ] && [ "$BREW_BASH" != "/bin/bash" ]; then
+  export SDKMAN_MODERN_BASH_REEXEC=1
+  exec "$BREW_BASH" "$0" "$@"
+fi
+
+source "$HOME/.sdkman/bin/sdkman-init.sh"
+
+while read -r candidate version flag; do
+  [ -z "$candidate" ] && continue
+  case "$candidate" in '#'*) continue ;; esac
+  # `sdk install` asks its own "set as default?" prompt on every install,
+  # and an empty/EOF answer (piping from /dev/null, as this used to) counts
+  # as yes — so an unflagged line installed after a flagged one silently
+  # stole the default back. Answer "n" here unconditionally and let the
+  # explicit `sdk default` call below be the only thing that ever sets one.
+  echo n | sdk install "$candidate" "$version" || echo "Failed to install $candidate $version — skipping" >&2
+  if [ "$flag" = "default" ]; then
+    sdk default "$candidate" "$version"
+  fi
+done < "$HOME/.config/dotfiles/sdkman-packages.txt"

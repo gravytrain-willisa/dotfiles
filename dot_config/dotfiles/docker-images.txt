@@ -1,0 +1,31 @@
+# One Docker image (with tag) per line, optionally followed by a space and a
+# platform (e.g. `sftp:alpine linux/amd64`) for images that only publish an
+# amd64 build — without it, Apple Silicon/ARM WSL hosts would otherwise pull
+# (or fail to pull) the wrong architecture. Blank lines and lines starting
+# with # are ignored. Keep this to cross-project images you always want
+# available regardless of which repo you're in — project-specific images
+# already live in that project's docker-compose.yml and get pulled via
+# `docker compose pull` when you clone it, so duplicating them here would be
+# redundant. Edit this file and run `chezmoi apply` to pull newly added
+# images.
+
+401540391282.dkr.ecr.eu-west-2.amazonaws.com/gt-triton-core-database:latest
+401540391282.dkr.ecr.eu-west-2.amazonaws.com/gt-triton-insurance-engine-fakecdl:latest
+401540391282.dkr.ecr.eu-west-2.amazonaws.com/kgm-broker-centre-database:latest
+401540391282.dkr.ecr.eu-west-2.amazonaws.com/localstack:4.14.0
+#401540391282.dkr.ecr.eu-west-2.amazonaws.com/qs-database:latest
+401540391282.dkr.ecr.eu-west-2.amazonaws.com/sendgrid-mock:1.12.0 linux/amd64
+401540391282.dkr.ecr.eu-west-2.amazonaws.com/sftp:alpine linux/amd64
+httpd:2.4
+mailhog/mailhog:latest
+mysql:8.4
+openapitools/openapi-generator-cli
+public.ecr.aws/amazoncorretto/amazoncorretto:11
+public.ecr.aws/amazoncorretto/amazoncorretto:21
+public.ecr.aws/bitnami/redis:latest linux/amd64
+public.ecr.aws/nginx/nginx:1.28
+redis:6.2
+swaggerapi/swagger-editor
+tomcat:9.0-jdk11-corretto
+wordpress:php8.3
+wordpress:7.0.2-php8.3-fpm

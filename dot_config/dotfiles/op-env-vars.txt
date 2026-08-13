@@ -1,0 +1,20 @@
+# Maps environment variables to 1Password credentials, one per line:
+# `ENV_VAR_NAME op://vault/item/field`. Blank lines and lines starting with
+# # are ignored. Run `op-login` to export everything below into your
+# current shell in one go (see README, "AI provider API keys, backed by
+# 1Password").
+#
+# The item/field must already exist in 1Password, as an item of type "API Credentials",
+# — this file only maps a reference to an env var name, it doesn't create anything.
+
+#ANTHROPIC_API_KEY op://Private/Anthropic API Key/credential
+#OPENAI_API_KEY op://Private/OpenAI API Key/credential
+SNYK_TOKEN op://Private/Snyk API Key/credential
+SNYK_CFG_ORG op://Private/Snyk API Key/org id
+
+# GH_TOKEN is special-cased: uncommenting it also makes
+# run_after_0019-gh-auth-login.sh.tmpl log `gh` in with this token
+# non-interactively instead of prompting for the OAuth device-flow on every
+# `chezmoi apply`. Needs 'repo' and 'read:org' scopes, same as the manual
+# token-based `gh auth login` prompt asks for.
+#GH_TOKEN op://Private/GitHub PAT/credential

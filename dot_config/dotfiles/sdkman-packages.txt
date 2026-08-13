@@ -1,0 +1,11 @@
+# One SDKMAN candidate + version per line ("candidate version [default]").
+# Blank lines and lines starting with # are ignored. Add the literal word
+# "default" as a third field on a line to pin it as that candidate's default
+# when there's more than one (e.g. multiple java versions). Edit this file
+# and run `chezmoi apply` to install newly added candidates.
+
+java 21.0.12-amzn default
+java 11.0.32-amzn
+ant 1.10.17
+gradle 9.7.0
+maven 3.9.16

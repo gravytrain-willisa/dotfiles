@@ -1,0 +1,82 @@
+#!/bin/bash
+{{ $manifest := print (include "dot_config/dotfiles/node-globals.txt") (include "dot_config/dotfiles/nvm-versions.txt") }}
+# hash: {{ $manifest | sha256sum }}
+# Re-runs when node-globals.txt OR nvm-versions.txt changes — a new Node
+# version needs re-evaluating against every package's constraint even if
+# node-globals.txt itself didn't change.
+#
+# Each node-globals.txt line is `package [constraint...]` — zero or more
+# space-separated constraints, each one comparison operator (>=, <=, ==/=,
+# >, <) directly followed by a Node MAJOR version number, no space (`>=16`,
+# not `>= 16`). No constraints = installed on every Node version in
+# nvm-versions.txt. Multiple constraints on one line are ANDed together,
+# e.g. `typescript >=16 <20` only installs on Node 16 through 19. This is
+# major-version-only integer comparison, not full semver (no `^16`/`~16.2`
+# range syntax) — sufficient for "does this tool run on this Node line",
+# which is all this needs to answer.
+# No -u: nvm.sh references optional env vars without defaults and assumes
+# nounset is off.
+set -eo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+export NVM_DIR="$HOME/.nvm"
+if command -v brew >/dev/null 2>&1 && brew list nvm >/dev/null 2>&1; then
+  NVM_SH="$(brew --prefix nvm)/nvm.sh"
+else
+  NVM_SH="$NVM_DIR/nvm.sh"
+fi
+# shellcheck disable=SC1090
+[ -s "$NVM_SH" ] && source "$NVM_SH"
+
+check_constraint() {
+  local token="$1" major="$2" op num
+  case "$token" in
+    '>='*) op='>='; num="${token#>=}" ;;
+    '<='*) op='<='; num="${token#<=}" ;;
+    '=='*) op='=='; num="${token#==}" ;;
+    '>'*)  op='>';  num="${token#>}" ;;
+    '<'*)  op='<';  num="${token#<}" ;;
+    '='*)  op='=';  num="${token#=}" ;;
+    *)
+      echo "Ignoring package with invalid version constraint '$token'" >&2
+      return 1
+      ;;
+  esac
+  case "$op" in
+    '>=') [ "$major" -ge "$num" ] ;;
+    '<=') [ "$major" -le "$num" ] ;;
+    '==' | '=') [ "$major" -eq "$num" ] ;;
+    '>')  [ "$major" -gt "$num" ] ;;
+    '<')  [ "$major" -lt "$num" ] ;;
+  esac
+}
+
+while read -r version flag; do
+  [ -z "$version" ] && continue
+  case "$version" in '#'*) continue ;; esac
+  nvm use "$version" >/dev/null
+  major="${version%%.*}"
+
+  packages=()
+  while read -r pkg rest; do
+    [ -z "$pkg" ] && continue
+    case "$pkg" in '#'*) continue ;; esac
+    ok=true
+    for token in $rest; do
+      check_constraint "$token" "$major" || { ok=false; break; }
+    done
+    $ok && packages+=("$pkg")
+  done < "$HOME/.config/dotfiles/node-globals.txt"
+
+  if [ "${#packages[@]}" -gt 0 ]; then
+    # Everything here is already curated by hand in node-globals.txt, so
+    # there's nothing left to gain from npm's per-package allow-scripts
+    # prompt — allow-list whatever's being installed this run rather than
+    # re-approving each package one at a time as it comes up.
+    allow_scripts="$(IFS=,; echo "${packages[*]}")"
+    npm install -g --allow-scripts="$allow_scripts" "${packages[@]}"
+  fi
+done < "$HOME/.config/dotfiles/nvm-versions.txt"
+
+nvm use default >/dev/null

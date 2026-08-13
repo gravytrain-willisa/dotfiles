@@ -1,0 +1,74 @@
+#!/bin/bash
+# Plain run_after_ (not run_once_/run_onchange_) — runs on every `chezmoi
+# apply`, since gh's auth state can change independently of anything
+# chezmoi tracks (token expiry, `gh auth logout`, revoked from GitHub's
+# side), unlike a manifest whose content is the only thing that should
+# trigger a rerun. Cheap no-op when already authenticated.
+#
+# `gh auth login` is an interactive OAuth device-flow — it prints a one-time
+# code and a URL to open in a browser and approve, which can't be scripted
+# away. Running it here just means you're prompted for that one-time
+# approval as part of `chezmoi apply` instead of needing to remember to run
+# it separately; it still needs a human at the browser — UNLESS a `GH_TOKEN`
+# mapping exists in op-env-vars.txt (see below), in which case that's used
+# non-interactively instead.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+EXPECTED_GH_USER="{{ .github.username }}"
+
+if ! command -v gh >/dev/null 2>&1; then
+  exit 0
+fi
+
+if ! gh auth status >/dev/null 2>&1; then
+  # Optional non-interactive path: if op-env-vars.txt maps a GH_TOKEN entry
+  # (same manifest op-login reads, just consumed here directly instead of
+  # via a sourced shell function — this script is its own non-interactive
+  # process and never sources dot_zshrc.tmpl), log in with it instead of
+  # blocking `chezmoi apply` on the device-flow prompt. No GH_TOKEN line (the
+  # default) or a failed lookup silently falls through to the interactive
+  # login below — this is a shortcut, not a requirement.
+  #
+  # Resolve the 1Password CLI binary for this platform ourselves rather than
+  # calling the op() wrapper dot_zshrc.tmpl defines — that wrapper only
+  # exists in an interactive shell that has sourced it. WSL only has
+  # `op.exe` (winget-installed, see run_once_0015); macOS has the native
+  # Homebrew `op`.
+  OP_CMD=""
+  if command -v op.exe >/dev/null 2>&1; then
+    OP_CMD="op.exe"
+  elif command -v op >/dev/null 2>&1; then
+    OP_CMD="op"
+  fi
+
+  if [ -n "$OP_CMD" ]; then
+    GH_TOKEN_REF="$(awk '$1 == "GH_TOKEN" { print $2; exit }' "$HOME/.config/dotfiles/op-env-vars.txt" 2>/dev/null)"
+    if [ -n "$GH_TOKEN_REF" ]; then
+      if GH_TOKEN_VALUE="$("$OP_CMD" read "$GH_TOKEN_REF" 2>/dev/null)" && [ -n "$GH_TOKEN_VALUE" ]; then
+        echo "gh is not authenticated — logging in with GH_TOKEN from 1Password ($GH_TOKEN_REF)." >&2
+        printf '%s' "$GH_TOKEN_VALUE" | gh auth login --with-token \
+          || echo "gh auth login --with-token failed — falling back to interactive login." >&2
+      else
+        echo "GH_TOKEN is mapped to $GH_TOKEN_REF in op-env-vars.txt, but reading it failed — falling back to interactive login." >&2
+      fi
+    fi
+  fi
+fi
+
+if ! gh auth status >/dev/null 2>&1; then
+  echo "gh is not authenticated — one-time interactive login needed." >&2
+  gh auth login
+fi
+
+# Confirms whichever account is actually authenticated matches
+# .chezmoidata/dotfiles.yaml's github.username, rather than assuming it —
+# catches logging into the wrong GitHub account (a stale token from a
+# different account, or picking the wrong one mid-device-flow) instead of
+# silently cloning/pushing as someone else.
+ACTUAL_GH_USER="$(gh api user --jq .login 2>/dev/null || true)"
+if [ -n "$ACTUAL_GH_USER" ] && [ "$ACTUAL_GH_USER" != "$EXPECTED_GH_USER" ]; then
+  echo "gh is authenticated as '$ACTUAL_GH_USER', not the expected '$EXPECTED_GH_USER'" >&2
+  echo "(github.username in .chezmoidata/dotfiles.yaml) — check this is the right account." >&2
+fi

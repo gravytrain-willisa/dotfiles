@@ -1,0 +1,34 @@
+{{- if .git.signing_key -}}
+# Managed by chezmoi — edit dot_config/git/allowed_signers.tmpl in the
+# dotfiles source repo, not this file directly (chezmoi apply overwrites
+# local edits here).
+#
+# Lists the keys trusted to sign, so git can *verify* SSH signatures
+# locally. Signing works fine without this file — what's missing is trust:
+# with no allowed signers, a cryptographically valid signature comes back as
+# `%G?` = U (good signature, untrusted) and `git verify-commit` exits
+# non-zero, plus `git log --show-signature` errors that
+# gpg.ssh.allowedSignersFile needs configuring. With the key listed here,
+# `%G?` = G and `verify-commit` passes. GitHub-side verification is separate
+# and unaffected either way (that comes from the key added to your account
+# as a Signing Key).
+#
+# Careful reading `git log --show-signature` alone: it prints "Good
+# signature" for any valid signature whether or not the key is trusted —
+# only the principal name is dropped. `git verify-commit` / `%G?` are the
+# signals that actually distinguish trusted from untrusted.
+#
+# Both fields come from .chezmoidata/dotfiles.yaml, so this stays in step
+# with the [user] identity and signing key in dot_gitconfig.tmpl rather than
+# being a third place the same values have to be kept in sync. The principal
+# does NOT have to match the commit's author or committer email — git finds
+# the entry by key and simply reports whatever principal is paired with it,
+# so a mismatch verifies just as happily under someone else's name. Keeping
+# it equal to git.email is what makes the reported identity meaningful, not
+# a correctness requirement.
+#
+# namespaces="git" scopes the key to git signatures specifically — the same
+# SSH key is also usable for `ssh-keygen -Y sign` in other namespaces, and
+# there's no reason to vouch for it beyond the one use this file exists for.
+{{ .git.email }} namespaces="git" {{ .git.signing_key }}
+{{- end }}

@@ -1,0 +1,43 @@
+{{/* Reusable snippet: point SSH_AUTH_SOCK at the 1Password SSH agent, first
+     starting the WSL2 named-pipe relay if it isn't already up.
+
+     Included via {{ template "ssh-agent-sock.sh.tmpl" . }} — by dot_zshrc.tmpl
+     (so interactive shells get an agent) and by any run_* script that needs
+     SSH before an interactive shell has ever existed. That second case is the
+     reason this is a shared snippet rather than living in dot_zshrc.tmpl:
+     chezmoi runs scripts with bash, non-interactively, so ~/.zshrc is never
+     sourced and a script that assumed it had been reaches `git clone` with no
+     agent at all. */ -}}
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+# WSL2 can't reach 1Password's Windows named pipe directly, so socat +
+# npiperelay (installed by run_once_0014-install-1password-ssh-relay.sh.tmpl)
+# relay it into a Unix socket here. Requires 1Password's SSH agent enabled
+# on the Windows side first (Settings -> Developer -> "Use the SSH Agent").
+export SSH_AUTH_SOCK="$HOME/.1password/agent.sock"
+# A socket file surviving a dead relay (WSL restart, npiperelay/socat
+# crash) still passes `-S`, so a liveness probe is needed on top of the
+# existence check — otherwise every new shell sees "socket exists" and
+# never respawns the relay, and ssh silently fails with "Connection
+# refused" until someone notices and deletes the file by hand.
+if [ -S "$SSH_AUTH_SOCK" ] && ! socat -u OPEN:/dev/null UNIX-CONNECT:"$SSH_AUTH_SOCK" >/dev/null 2>&1; then
+  rm -f "$SSH_AUTH_SOCK"
+fi
+if [ ! -S "$SSH_AUTH_SOCK" ] && [ -x "$HOME/.local/bin/npiperelay.exe" ]; then
+  mkdir -p "$(dirname "$SSH_AUTH_SOCK")"
+  (setsid socat UNIX-LISTEN:"$SSH_AUTH_SOCK",fork \
+    EXEC:"$HOME/.local/bin/npiperelay.exe -ei -s //./pipe/openssh-ssh-agent",nofork &) >/dev/null 2>&1
+  # socat backgrounds immediately but takes a moment to create the socket, so
+  # whatever runs next would otherwise race it and see "no such file". Only
+  # reached on a cold start (once per WSL boot), not on every shell.
+  for _ in 1 2 3 4 5 6 7 8 9 10; do
+    [ -S "$SSH_AUTH_SOCK" ] && break
+    sleep 0.2
+  done
+fi
+{{- else if eq .chezmoi.os "darwin" }}
+# 1Password exposes a Unix socket directly on macOS — no relay needed, just
+# needs the same "Use the SSH Agent" toggle switched on.
+export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+{{- end }}
+{{- /* Bare-metal (non-WSL) Linux: no relay applies, so SSH_AUTH_SOCK is
+       left untouched — whatever local agent (if any) is already running. */}}

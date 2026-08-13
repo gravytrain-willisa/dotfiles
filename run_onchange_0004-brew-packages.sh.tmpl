@@ -1,0 +1,18 @@
+#!/bin/bash
+# hash: {{ include "dot_config/dotfiles/brew-packages.txt" | sha256sum }}
+# Re-runs only when brew-packages.txt's contents change.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+while read -r pkg; do
+  case "$pkg" in ''|'#'*) continue ;; esac
+  # `|| true` so one bad formula doesn't abort the rest of the list — but a
+  # bare `|| true` also swallows the actual error, and since this only
+  # re-runs when brew-packages.txt's content changes, a silent failure here
+  # stays silently un-installed until the next unrelated manifest edit. Echo
+  # it instead so it's visible in the `chezmoi apply` output.
+  if ! brew install "$pkg"; then
+    echo "brew install $pkg failed — continuing with the rest of the list" >&2
+  fi
+done < "$HOME/.config/dotfiles/brew-packages.txt"

@@ -1,0 +1,59 @@
+#!/bin/bash
+# hash: {{ include "dot_config/dotfiles/docker-images.txt" | sha256sum }}
+# Re-runs only when docker-images.txt's contents change. Docker Desktop
+# itself isn't installed by this repo (it's a separate GUI install on both
+# macOS and Windows, per the cross-platform dev setup doc) — this just
+# assumes it's already there. Skips quietly if the CLI or daemon isn't
+# available yet; on a genuinely fresh machine, run `chezmoi apply` again
+# after installing Docker Desktop and enabling WSL2 integration to trigger
+# the pulls.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+if ! command -v docker >/dev/null 2>&1; then
+  echo "docker not found — skipping image pulls (install Docker Desktop, then re-run chezmoi apply)" >&2
+  exit 0
+fi
+
+if ! docker info >/dev/null 2>&1; then
+  echo "docker daemon not reachable — skipping image pulls (start Docker Desktop, then re-run chezmoi apply)" >&2
+  exit 0
+fi
+
+# Some images live in private ECR repos, which need a fresh (12h) login
+# token before `docker pull` will work. This can't just call the ecr_auth
+# shell function from dot_zshrc.tmpl — that only exists in your interactive
+# zsh session, not this script's own separate bash process — so it logs in
+# directly here instead, once per distinct registry actually referenced in
+# the manifest (region/account come from the registry hostname itself, not
+# the current shell's AWS_REGION/AWS_ACCOUNT_ID, so this stays correct even
+# if it differs from whatever profile is currently active via aws-login).
+ecr_registries="$(grep -vE '^\s*(#|$)' "$HOME/.config/dotfiles/docker-images.txt" \
+  | awk '{print $1}' \
+  | grep -oE '^[0-9]+\.dkr\.ecr\.[a-z0-9-]+\.amazonaws\.com' \
+  | sort -u || true)"
+
+if [ -n "$ecr_registries" ]; then
+  if ! aws sts get-caller-identity >/dev/null 2>&1; then
+    echo "No AWS credentials in this shell — skipping these ECR-hosted images (run 'aws-login <profile>' first, then re-run chezmoi apply):" >&2
+    echo "$ecr_registries" | sed 's/^/  /' >&2
+  else
+    while read -r registry; do
+      region="$(echo "$registry" | sed -E 's/^[0-9]+\.dkr\.ecr\.([a-z0-9-]+)\.amazonaws\.com$/\1/')"
+      echo "Logging in to ECR ($registry)..." >&2
+      aws ecr get-login-password --region "$region" \
+        | docker login --username AWS --password-stdin "$registry" \
+        || echo "Failed to log in to $registry — its images will fail to pull below" >&2
+    done <<<"$ecr_registries"
+  fi
+fi
+
+while read -r image platform; do
+  case "$image" in ''|'#'*) continue ;; esac
+  if [ -n "$platform" ]; then
+    docker pull --platform "$platform" "$image" || echo "Failed to pull $image ($platform) — skipping" >&2
+  else
+    docker pull "$image" || echo "Failed to pull $image — skipping" >&2
+  fi
+done < "$HOME/.config/dotfiles/docker-images.txt"

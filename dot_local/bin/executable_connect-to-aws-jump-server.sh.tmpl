@@ -1,0 +1,76 @@
+#!/bin/bash
+# Managed by chezmoi — edit dot_local/bin/executable_connect-to-aws-jump-
+# server.sh.tmpl in the dotfiles source repo, not this file directly.
+#
+# Opens an SSH tunnel through the Gravytrain jump box to a given system's
+# RDS cluster for a given stage, so a local MySQL client pointed at
+# 127.0.0.1:3306 talks to that stage's database. The jump box has no fixed
+# IP (it's started on demand), so it's passed as an argument each time.
+#
+# The RDS cluster endpoint is looked up from AWS at connect time rather than
+# hardcoded: each stage's cluster identifier
+# (${stage}-<system prefix>-<random suffix>) carries an opaque,
+# cluster-generated suffix that silently goes stale if the cluster is ever
+# recreated (e.g. restored from snapshot, rebuilt by Terraform/CDK).
+# Matching on the stable "${stage}-<system prefix>" prefix avoids re-editing
+# this script whenever that happens. System -> prefix mapping lives in
+# `rds.systems` in `.chezmoidata/dotfiles.yaml`, not here, so adding a new
+# system is a data change, not a script change.
+set -euo pipefail
+
+readonly REGION="${AWS_REGION:-{{ .aws.default_region }}}"
+
+SYSTEM="${1:-}"
+STAGE="${2:-}"
+JUMP_IP="${3:-}"
+
+case "$SYSTEM" in
+{{- range $system, $prefix := .rds.systems }}
+  {{ $system }}) CLUSTER_ID_PREFIX_BASE="{{ $prefix }}" ;;
+{{- end }}
+  *)
+    echo "System needed: {{ range $system, $prefix := .rds.systems }}{{ $system }} {{ end }}" >&2
+    exit 1
+    ;;
+esac
+
+case "$STAGE" in
+  dev|staging|prod) ;;
+  *)
+    echo "Environment needed: prod, staging or dev" >&2
+    exit 1
+    ;;
+esac
+
+if [ -z "$JUMP_IP" ]; then
+  echo "Jump box IP needed" >&2
+  exit 1
+fi
+
+if ! aws sts get-caller-identity >/dev/null 2>&1; then
+  echo "No AWS credentials in this shell — run 'aws-login <profile>' first" >&2
+  exit 1
+fi
+
+CLUSTER_ID_PREFIX="${STAGE}-${CLUSTER_ID_PREFIX_BASE}"
+
+matches="$(aws rds describe-db-clusters --region "$REGION" \
+  --query "DBClusters[?starts_with(DBClusterIdentifier, '${CLUSTER_ID_PREFIX}')].[DBClusterIdentifier,Endpoint]" \
+  --output text)"
+
+if [ -z "$matches" ]; then
+  echo "No RDS cluster found matching '${CLUSTER_ID_PREFIX}*' in ${REGION}" >&2
+  exit 1
+fi
+
+if [ "$(printf '%s\n' "$matches" | wc -l)" -gt 1 ]; then
+  echo "Multiple RDS clusters matched '${CLUSTER_ID_PREFIX}*' — refine the prefix:" >&2
+  printf '%s\n' "$matches" >&2
+  exit 1
+fi
+
+CLUSTER_ID="$(printf '%s' "$matches" | cut -f1)"
+ENDPOINT="$(printf '%s' "$matches" | cut -f2)"
+
+echo "Connecting to ${CLUSTER_ID} (${ENDPOINT}) via jump box ${JUMP_IP}..."
+ssh -o StrictHostKeyChecking=accept-new -N -L 127.0.0.1:3306:"${ENDPOINT}":3306 {{ .rds.jump_user }}@"${JUMP_IP}"

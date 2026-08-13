@@ -1,0 +1,24 @@
+#!/bin/bash
+# Installs pyenv, skipped if brew already provides it.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+# pyenv builds CPython from source, which needs these -dev libraries present
+# up front (per pyenv's own "suggested build environment" docs) — without
+# them the build can fail in confusing ways, e.g. missing zlib/libffi breaks
+# ensurepip because it can't unpack the pip wheel (a .whl is a zip file).
+{{- if eq .chezmoi.os "linux" }}
+sudo apt-get update
+sudo apt-get install -y make build-essential libssl-dev zlib1g-dev \
+  libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+{{- else if eq .chezmoi.os "darwin" }}
+brew install openssl readline sqlite3 xz zlib tcl-tk
+{{- end }}
+
+if command -v brew >/dev/null 2>&1 && brew list pyenv >/dev/null 2>&1; then
+  : # already installed via Homebrew/Linuxbrew
+elif [ ! -d "$HOME/.pyenv" ]; then
+  curl https://pyenv.run | bash
+fi
