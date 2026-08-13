@@ -1,0 +1,18 @@
+# One npm global package per line: `package [constraint...]`. Blank lines
+# and lines starting with # are ignored. Keep this short — anything
+# project-specific belongs in that project's devDependencies instead. Edit
+# and run `chezmoi apply` to install newly added packages/constraints.
+#
+# A package with no constraint installs on every Node version listed in
+# nvm-versions.txt. Add one or more space-separated constraints to restrict
+# it: an operator (>=, <=, ==/=, >, <) directly followed by a Node MAJOR
+# version number, no space (`>=16`, not `>= 16`). Multiple constraints on
+# one line are ANDed together, e.g. `>=16 <20` = Node 16 through 19. This is
+# major-version-only comparison, not full semver.
+
+@anthropic-ai/claude-code >=22
+@openai/codex >=22
+gulp-cli >=10
+npm-check-updates >=22
+snyk >=22
+whales-names >=8

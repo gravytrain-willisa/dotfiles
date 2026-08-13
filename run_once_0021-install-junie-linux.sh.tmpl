@@ -1,0 +1,19 @@
+{{- if eq .chezmoi.os "linux" -}}
+#!/bin/bash
+# Installs JetBrains Junie CLI on Linux/WSL2 via the official installer.
+#
+# Not done through brew-packages.txt: the jetbrains/homebrew-junie formula's
+# `url` unconditionally points at a macOS build (no on_linux branch at all),
+# so `brew install jetbrains/junie/junie` on Linuxbrew downloads a Mach-O
+# binary that fails with "cannot execute binary file: Exec format error" —
+# an upstream tap bug, not a Linuxbrew/WSL2 quirk. install.sh does real
+# per-OS detection, so it's used here instead; macOS keeps the brew formula,
+# which is correct there. See brew-packages.txt for the matching skip.
+#
+# Junie self-updates its own ~/.local/bin/junie shim after this, so this only
+# needs to run once — chezmoi's own run_once state (not this repo) tracks
+# that, same as the other run_once_* installers.
+set -euo pipefail
+
+curl -fsSL https://junie.jetbrains.com/install.sh | bash
+{{- end }}

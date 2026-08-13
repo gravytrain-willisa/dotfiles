@@ -1,0 +1,10 @@
+{{/* The SSH agent relay's systemd --user unit only makes sense under genuine WSL2
+     (see .chezmoitemplates/ssh-agent-sock.sh.tmpl for the same guard) — on macOS
+     1Password exposes its own Unix socket directly, and bare-metal Linux has no
+     Windows named pipe to relay from. Excluded here (rather than an inline
+     {{ if }}/{{ end }} inside the unit file) so it's never even created on those
+     platforms — an empty file at ~/.config/systemd/user/ssh-agent-relay.service
+     would be inert but confusing litter. */ -}}
+{{- if not (and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower))) }}
+.config/systemd/user/ssh-agent-relay.service
+{{- end }}

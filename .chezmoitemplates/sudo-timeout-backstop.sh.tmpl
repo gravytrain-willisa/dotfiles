@@ -1,0 +1,24 @@
+_dotfiles_remove_stale_sudo_rule() {
+  local sudoers_file="/etc/sudoers.d/dotfiles-sudo-timeout"
+  local pid_file="$HOME/.cache/dotfiles-sudo-timeout.pid"
+  [ -f "$sudoers_file" ] || return 0
+  if [ -f "$pid_file" ]; then
+    local recorded_pid recorded_start current_start
+    read -r recorded_pid recorded_start <"$pid_file" 2>/dev/null
+    if [ -n "$recorded_pid" ] && kill -0 "$recorded_pid" 2>/dev/null; then
+      # A PID alone isn't enough — PIDs get reused, and a long-running
+      # unrelated process could later land on the same number and fool a
+      # plain liveness check into thinking `chezmoi apply` never finished.
+      # /proc/<pid>'s own mtime is set once, at that process's actual start
+      # time, so pairing it with the PID gives a compound identity that a
+      # reused PID won't match.
+      current_start="$(stat -c %Y "/proc/$recorded_pid" 2>/dev/null)"
+      if [ -n "$current_start" ] && [ "$current_start" = "$recorded_start" ]; then
+        return 0
+      fi
+    fi
+  fi
+  echo "Removing leftover bootstrap sudo rule at $sudoers_file (the 'chezmoi apply' that created it has already finished or failed) — you may be prompted for your password." >&2
+  sudo rm -f "$sudoers_file" "$pid_file"
+}
+_dotfiles_remove_stale_sudo_rule

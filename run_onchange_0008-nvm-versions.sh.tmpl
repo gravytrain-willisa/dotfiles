@@ -1,0 +1,48 @@
+#!/bin/bash
+# hash: {{ include "dot_config/dotfiles/nvm-versions.txt" | sha256sum }}
+# Re-runs only when nvm-versions.txt's contents change. Each line is
+# "version [default]" — add the literal word "default" as a second field to
+# pin which version `nvm alias default` selects, same convention as
+# sdkman-packages.txt. corepack is re-enabled for every version installed,
+# since its shims live under that version's own bin directory, not shared
+# across versions — skipped on versions too old to bundle it (pre-14.19/16.9,
+# e.g. Node 12).
+# No -u: nvm.sh references optional env vars without defaults and assumes
+# nounset is off.
+set -eo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+export NVM_DIR="$HOME/.nvm"
+if command -v brew >/dev/null 2>&1 && brew list nvm >/dev/null 2>&1; then
+  NVM_SH="$(brew --prefix nvm)/nvm.sh"
+else
+  NVM_SH="$NVM_DIR/nvm.sh"
+fi
+# shellcheck disable=SC1090
+[ -s "$NVM_SH" ] && source "$NVM_SH"
+
+while read -r version flag; do
+  [ -z "$version" ] && continue
+  case "$version" in '#'*) continue ;; esac
+  nvm install "$version"
+  # Deriving corepack's path from the just-activated node's own bin
+  # directory, not a bare `command -v corepack` — nvm's PATH swap can leave
+  # a previous version's bin dir still reachable further down PATH, so a
+  # bare lookup can resolve to a *different* installed version's corepack
+  # shim (mismatched against whichever node happens to be first on PATH) —
+  # e.g. resolving Node 24's corepack.js while Node 12 is active, which
+  # 12 can't parse (corepack.js uses `??=`, unsupported pre-ES2021) and
+  # aborts the whole script. Checking next to this version's own `node`
+  # binary is what correctly no-ops on versions too old to bundle it.
+  node_bin="$(command -v node)"
+  corepack_bin="$(dirname "$node_bin")/corepack"
+  if [ -x "$corepack_bin" ]; then
+    "$corepack_bin" enable
+  fi
+  if [ "$flag" = "default" ]; then
+    nvm alias default "$version"
+  fi
+done < "$HOME/.config/dotfiles/nvm-versions.txt"
+
+nvm use default >/dev/null

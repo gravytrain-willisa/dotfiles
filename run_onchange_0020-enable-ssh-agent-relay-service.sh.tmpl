@@ -1,0 +1,40 @@
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) -}}
+#!/bin/bash
+# hash: {{ include "dot_config/systemd/user/ssh-agent-relay.service" | sha256sum }}
+# Re-runs whenever dot_config/systemd/user/ssh-agent-relay.service's rendered
+# content changes, so an edit to the unit gets picked up (daemon-reload + a
+# restart) without anyone having to remember `chezmoi state delete-bucket`.
+#
+# Why this exists on top of .chezmoitemplates/ssh-agent-sock.sh.tmpl: that
+# snippet only starts the relay from an interactive zsh shell (or a run_*
+# script that includes it directly) — anything that reaches WSL without
+# ever sourcing ~/.zshrc never sees it. IntelliJ's WSL git integration is
+# exactly that case: it runs /usr/bin/git straight via wsl.exe, no shell rc
+# involved, so SSH_AUTH_SOCK was unset and the relay was never started,
+# even though a terminal in the same WSL instance worked fine. A
+# systemd --user unit (enabled here) plus a system-wide SSH_AUTH_SOCK in
+# /etc/environment fixes both halves: the relay runs from boot regardless
+# of any shell, and every process — including ones wsl.exe launches
+# directly — sees the socket path.
+set -euo pipefail
+
+# systemd --user normally only starts on an interactive login; lingering
+# keeps the user manager (and this service) running even when nothing has
+# ever logged in interactively, which is exactly the IntelliJ/wsl.exe case.
+loginctl enable-linger "{{ .chezmoi.username }}" 2>/dev/null || true
+
+systemctl --user daemon-reload
+systemctl --user enable --now ssh-agent-relay.service
+
+# Static path, not $HOME expanded by a login shell — /etc/environment has no
+# variable expansion of its own, and this specifically needs to reach
+# processes that never source ~/.zshrc (where this same path is exported
+# for interactive shells; see ssh-agent-sock.sh.tmpl).
+SOCK_LINE="SSH_AUTH_SOCK={{ .chezmoi.homeDir }}/.1password/agent.sock"
+if ! grep -qxF "$SOCK_LINE" /etc/environment 2>/dev/null; then
+  # Validating helper installed by run_once_before_0000 — not a bare `tee`,
+  # since sudoers can't restrict what's piped into one; see that script's
+  # comments.
+  sudo /usr/local/sbin/dotfiles-append-environment "$SOCK_LINE"
+fi
+{{- end }}

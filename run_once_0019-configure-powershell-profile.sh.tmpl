@@ -1,0 +1,78 @@
+#!/bin/bash
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+# starship in WSL's own zsh (dot_zshrc.tmpl, installed via brew-packages.txt)
+# only covers prompts drawn inside WSL. PowerShell is a genuinely separate
+# Windows process with its own PATH/binary search — same story as
+# aws-vault.exe/op.exe in run_once_0015-install-aws-vault.sh.tmpl — so it needs
+# its own starship.exe and its own init line in its own profile.
+set -euo pipefail
+
+if command -v winget.exe >/dev/null 2>&1; then
+  if ! command -v starship.exe >/dev/null 2>&1; then
+    winget.exe install --id Starship.Starship -e --silent \
+      --accept-package-agreements --accept-source-agreements
+    echo "starship installed via winget — if 'starship.exe' isn't found in a" >&2
+    echo "new shell, restart WSL (run 'wsl --shutdown' from Windows, then" >&2
+    echo "reopen) to pick up the updated Windows PATH." >&2
+  fi
+else
+  echo "winget.exe not found on PATH — install manually on the Windows side:" >&2
+  echo "  winget install --id Starship.Starship -e" >&2
+fi
+
+# Both Windows PowerShell (powershell.exe, 5.1, always present) and
+# PowerShell 7+ (pwsh.exe, an optional separate install) have their own
+# $PROFILE, independent of each other — configure whichever of the two
+# binaries is actually present.
+configure_profile() {
+  local exe="$1"
+
+  # $PROFILE isn't created by PowerShell itself — it only names where a
+  # profile script would go, so a fresh machine genuinely has no file there
+  # yet (not a broken link). Ask PowerShell for the actual path rather than
+  # assuming a fixed location — it differs between powershell.exe and
+  # pwsh.exe (and can vary further by host), and this stays correct either
+  # way.
+  local win_profile wsl_profile
+  win_profile="$("$exe" -NoProfile -Command 'Write-Output $PROFILE' | tr -d '\r\n')"
+  wsl_profile="$(wslpath -u "$win_profile")"
+  mkdir -p "$(dirname "$wsl_profile")"
+
+  # Append-only, not chezmoi-owned like ~/.zshrc — PowerShell is a
+  # fallback-only shell here (see README), so this only injects the one line
+  # it actually cares about and leaves anything else in the profile (which
+  # this repo doesn't manage) untouched. Idempotent: skip if the line's
+  # already there, whether from a previous run or added by hand.
+  if [ ! -f "$wsl_profile" ] || ! grep -qF 'starship init powershell' "$wsl_profile"; then
+    printf '%s\n' 'Invoke-Expression (&starship init powershell)' >>"$wsl_profile"
+    echo "Added starship init to $win_profile" >&2
+  fi
+
+  # Windows PowerShell's default execution policy (Restricted) blocks
+  # running ANY script file, including this profile — deliberately not
+  # something to silently change on the user's behalf here (it's a genuine
+  # security control, not a config value), so this only detects and warns
+  # rather than running Set-ExecutionPolicy itself.
+  local policy
+  policy="$("$exe" -NoProfile -Command 'Write-Output $(Get-ExecutionPolicy -Scope CurrentUser)' | tr -d '\r\n')"
+  if [ "$policy" = "Restricted" ] || [ "$policy" = "Undefined" ]; then
+    echo "$exe's CurrentUser execution policy is '$policy', which blocks" >&2
+    echo "the profile above from loading at all. Run this once, in that shell" >&2
+    echo "(no admin needed):" >&2
+    echo "  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser" >&2
+  fi
+}
+
+found_any=false
+for exe in powershell.exe pwsh.exe; do
+  if command -v "$exe" >/dev/null 2>&1; then
+    found_any=true
+    configure_profile "$exe"
+  fi
+done
+
+if [ "$found_any" = false ]; then
+  echo "powershell.exe/pwsh.exe not found — add this to your PowerShell" >&2
+  echo "profile manually: Invoke-Expression (&starship init powershell)" >&2
+fi
+{{- end }}

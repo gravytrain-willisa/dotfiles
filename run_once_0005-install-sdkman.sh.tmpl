@@ -1,0 +1,38 @@
+#!/bin/bash
+# SDKMAN has no official brew formula, but the check is kept here in case
+# that ever changes or a local Brewfile fork adds one — "if not installed by
+# brew already" per the setup requirements.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+# The SDKMAN installer (and `sdk install` itself, to unpack candidate
+# archives) needs unzip/zip present. Not part of the Linuxbrew apt-prereqs
+# list since those are only what Linuxbrew itself needs to install.
+if ! command -v unzip >/dev/null 2>&1 || ! command -v zip >/dev/null 2>&1; then
+  {{- if eq .chezmoi.os "linux" }}
+  sudo apt-get update
+  sudo apt-get install -y unzip zip
+  {{- else if eq .chezmoi.os "darwin" }}
+  brew install unzip zip
+  {{- end }}
+fi
+
+if command -v brew >/dev/null 2>&1 && brew list sdkman-cli >/dev/null 2>&1; then
+  : # already installed via Homebrew/Linuxbrew
+elif [ ! -d "$HOME/.sdkman" ]; then
+  curl -s "https://get.sdkman.io" | bash
+fi
+
+# NOT setting sdkman_auto_answer=true here (an earlier version of this
+# script did): it auto-accepts every SDKMAN prompt, including "switch your
+# local default to whatever upstream currently recommends" — which fought
+# the version pinning sdkman-packages.txt exists to enforce, and in
+# practice silently started downloading a different JDK vendor/version than
+# the one pinned there. update-all avoids the interactive prompt instead by
+# not calling `sdk upgrade` at all — see dot_zshrc.tmpl.
+SDKMAN_CONFIG="$HOME/.sdkman/etc/config"
+if [ -f "$SDKMAN_CONFIG" ] && grep -q '^sdkman_auto_answer=' "$SDKMAN_CONFIG"; then
+  awk '{sub(/^sdkman_auto_answer=.*/, "sdkman_auto_answer=false")}1' \
+    "$SDKMAN_CONFIG" >"$SDKMAN_CONFIG.tmp" && mv "$SDKMAN_CONFIG.tmp" "$SDKMAN_CONFIG"
+fi

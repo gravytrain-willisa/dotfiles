@@ -1,0 +1,41 @@
+#!/bin/bash
+# Once Homebrew/Linuxbrew exists, hand the chosen shell ({{ .shell }}) over
+# to it too — same rationale as the chezmoi handoff below: `brew upgrade`
+# keeps it current instead of relying on apt/macOS's bundled version (which
+# on macOS in particular is usually years out of date). Re-points the
+# default login shell at the brew-managed binary. run_once_after_ guarantees
+# this runs after Homebrew is installed, in the same `chezmoi apply`.
+set -euo pipefail
+
+SHELL_NAME="{{ .shell }}"
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+# Installing and handing off are two separate idempotent conditions, kept
+# in two `if`s rather than one — a prior run that installed the brew shell
+# but then failed on the sudo/chsh step below (e.g. no tty for the sudo
+# password) must still retry the handoff on the next apply, even though
+# `brew list` now already finds the shell installed. A single combined
+# `if brew install ... && ! already installed` would skip the handoff
+# entirely in that case, silently leaving the login shell unchanged forever.
+if command -v brew >/dev/null 2>&1; then
+  if ! brew list "$SHELL_NAME" >/dev/null 2>&1; then
+    brew install "$SHELL_NAME"
+  fi
+  BREW_SHELL_PATH="$(brew --prefix)/bin/$SHELL_NAME"
+
+  if [ -x "$BREW_SHELL_PATH" ]; then
+    if ! grep -qx "$BREW_SHELL_PATH" /etc/shells 2>/dev/null; then
+      {{- if eq .chezmoi.os "linux" }}
+      # See run_once_before_0000-configure-sudo-timeout.sh.tmpl for why this
+      # goes through a validating helper instead of a bare `tee`.
+      sudo /usr/local/sbin/dotfiles-append-shell "$BREW_SHELL_PATH"
+      {{- else }}
+      echo "$BREW_SHELL_PATH" | sudo tee -a /etc/shells >/dev/null
+      {{- end }}
+    fi
+    if [ "${SHELL:-}" != "$BREW_SHELL_PATH" ]; then
+      sudo chsh -s "$BREW_SHELL_PATH" "$(whoami)" 2>/dev/null || chsh -s "$BREW_SHELL_PATH"
+    fi
+  fi
+fi

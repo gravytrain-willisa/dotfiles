@@ -1,0 +1,9 @@
+# Set the default behavior, in case people don't have core.autocrlf set, to handle line endings
+# automatically for files detected as text and leave all files detected as binary untouched.
+# eol=lf (not native) as the default: chezmoi renders every *.tmpl file's
+# bytes verbatim into the target dotfile, so a Windows checkout with
+# core.autocrlf=true silently CRLF-converting e.g. dot_zshrc.tmpl would
+# produce a CRLF ~/.zshrc that zsh can't parse. Everything in this repo is
+# consumed by Linux/macOS shells/tools, never by native Windows line-ending
+# expectations, so there's no case where eol=lf is wrong here.
+* text=auto eol=lf

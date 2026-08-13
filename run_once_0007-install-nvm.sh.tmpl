@@ -1,0 +1,17 @@
+#!/bin/bash
+# Installs nvm itself, skipped if brew already provides it. Which Node
+# versions get installed is driven by nvm-versions.txt, handled separately
+# by run_onchange_0008-nvm-versions.sh.tmpl.
+# No -u: nvm.sh references optional env vars without defaults and assumes
+# nounset is off.
+set -eo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+export NVM_DIR="$HOME/.nvm"
+
+if command -v brew >/dev/null 2>&1 && brew list nvm >/dev/null 2>&1; then
+  : # already installed via Homebrew/Linuxbrew
+elif [ ! -d "$NVM_DIR" ]; then
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+fi

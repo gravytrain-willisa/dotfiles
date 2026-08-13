@@ -1,0 +1,38 @@
+#!/bin/bash
+# hash: {{ include "dot_config/dotfiles/pip-packages.txt" | sha256sum }}
+# Re-runs only when pip-packages.txt's contents change. Installs against
+# whichever Python pyenv-versions.txt set as global.
+set -euo pipefail
+
+{{ template "brew-shellenv.sh.tmpl" . }}
+
+# PYENV_ROOT stays at ~/.pyenv unconditionally — see dot_zshrc.tmpl for why
+# pointing it at `brew --prefix pyenv` (the formula/binary path, not a pyenv
+# root) is wrong.
+export PYENV_ROOT="$HOME/.pyenv"
+export PATH="$PYENV_ROOT/bin:$PATH"
+if command -v brew >/dev/null 2>&1 && [ -x "$(brew --prefix pyenv 2>/dev/null)/bin/pyenv" ]; then
+  export PATH="$(brew --prefix pyenv)/bin:$PATH"
+fi
+eval "$(pyenv init -)"
+
+# Failures are collected rather than aborting immediately, so one bad
+# package doesn't block the rest of the list — but the script still exits
+# non-zero at the end if any occurred, so chezmoi retries this whole script
+# (idempotent — `pip install` on an already-installed package is a fast
+# no-op) on the next apply instead of the package staying silently
+# un-installed until pip-packages.txt itself happens to change again.
+failures=0
+while read -r package; do
+  [ -z "$package" ] && continue
+  case "$package" in '#'*) continue ;; esac
+  if ! pip install "$package"; then
+    echo "Failed to install $package — skipping" >&2
+    failures=$((failures + 1))
+  fi
+done < "$HOME/.config/dotfiles/pip-packages.txt"
+
+if [ "$failures" -gt 0 ]; then
+  echo "$failures package(s) failed to install — chezmoi will retry this script on the next apply" >&2
+  exit 1
+fi

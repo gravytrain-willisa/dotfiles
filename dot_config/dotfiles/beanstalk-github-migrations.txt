@@ -1,0 +1,22 @@
+# Repos mid-migration from Beanstalk to GitHub. Each line is
+# `<beanstalk clone URL> <github clone URL>`. Blank lines and lines starting
+# with # are ignored.
+#
+# For each pair, once the beanstalk URL has been cloned by git-repos.txt
+# (this manifest doesn't clone anything itself), the clone-repos
+# run_onchange script renames the checkout's main/master branch to
+# `<branch>-beanstalk`, renames the `origin` remote to `beanstalk`, and adds
+# a new `origin` pointing at the GitHub URL — so `origin` always means
+# "where we push now" and history during the migration stays reachable
+# under the old name. Idempotent: skips a repo that already has a
+# `beanstalk` remote.
+#
+# Once a repo's migration is complete (GitHub is the sole source of truth),
+# remove its line here — this manifest is for the transition only, not a
+# permanent record of every repo's history.
+
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-java-bounce-studio.git git@github.com:Gravytrain-UK/gt-bounce-studio.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-java-coreutils.git git@github.com:Gravytrain-UK/gt-coreutils.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-java-insurance-engine-core.git git@github.com:Gravytrain-UK/gt-insurance-engine-core.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/gt-maven-parent-pom.git git@github.com:Gravytrain-UK/gt-maven-parent-pom.git
+git@gravytrain.git.beanstalkapp.com:/gravytrain/qs-quote-engine.git git@github.com:Gravytrain-UK/qs-quote-engine.git

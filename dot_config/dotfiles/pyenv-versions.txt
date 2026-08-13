@@ -1,0 +1,7 @@
+# One pyenv Python version per line ("version [default]"). Blank lines and
+# lines starting with # are ignored. Add the literal word "default" as a
+# second field to pin which version `pyenv global` selects, same convention
+# as nvm-versions.txt/sdkman-packages.txt. Edit this file and run
+# `chezmoi apply` to install newly added versions.
+
+3.14.7 default

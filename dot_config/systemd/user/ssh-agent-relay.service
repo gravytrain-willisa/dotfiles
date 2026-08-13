@@ -1,0 +1,24 @@
+# Managed by chezmoi (see run_onchange_0021-enable-ssh-agent-relay-service.sh.tmpl
+# for how this gets loaded/enabled — editing this file alone doesn't restart it).
+#
+# Runs the same socat + npiperelay relay as .chezmoitemplates/ssh-agent-sock.sh.tmpl,
+# but as a systemd --user service instead of something only an interactive zsh shell
+# starts. Needed for anything that reaches WSL without ever sourcing ~/.zshrc — e.g.
+# IntelliJ's WSL git integration invokes /usr/bin/git directly via wsl.exe, so it
+# never sees the relay-startup logic that lives in that shell snippet.
+[Unit]
+Description=1Password SSH agent relay (WSL2 named pipe -> Unix socket)
+
+[Service]
+Type=simple
+ExecStartPre=/bin/mkdir -p %h/.1password
+# Clears a stale socket file left by a previous relay run before binding a fresh
+# one — same reasoning as the dead-socket check in ssh-agent-sock.sh.tmpl, just not
+# needed here since systemd's own Restart= already guarantees a clean respawn.
+ExecStartPre=-/bin/rm -f %h/.1password/agent.sock
+ExecStart=/usr/bin/socat UNIX-LISTEN:%h/.1password/agent.sock,fork "EXEC:%h/.local/bin/npiperelay.exe -ei -s //./pipe/openssh-ssh-agent,nofork"
+Restart=on-failure
+RestartSec=1
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,44 @@
+# One Homebrew/Linuxbrew formula per line. Blank lines and lines starting
+# with # are ignored. Edit this file and run `chezmoi apply` to reinstall.
+#
+# Formula from a third-party tap: use `user/tap/formula` (e.g. `llimllib/tap/aver`
+# below), not the plain formula name. `brew install user/tap/formula` auto-taps
+# and updates as needed — no separate `brew tap`/`brew update` line required here.
+
+# Modern Bash for interactive/ad-hoc use — macOS still ships 3.2 (2007), frozen
+# at the last GPLv2 release. This does NOT affect this repo's own scripts: they
+# all use an absolute `#!/bin/bash`, and macOS's /bin/bash is on the read-only
+# system volume, so it stays 3.2 whatever brew installs at /opt/homebrew/bin/bash.
+# Those scripts are deliberately 3.2-compatible — see CLAUDE.md, "Scripts must
+# stay bash 3.2-compatible".
+bash
+
+# CLI tools
+direnv
+fd
+fzf
+jq
+k6
+ripgrep
+starship
+
+# AWS
+awscli
+
+# Git (kept more up-to-date than standard install), GitHub CLI & GitHub Actions version check
+git
+gh
+llimllib/tap/aver
+
+# JetBrains Junie CLI — macOS only. The jetbrains/homebrew-junie formula has
+# no on_linux branch (its `url` unconditionally points at a macOS build), so
+# installing this via Linuxbrew/WSL2 downloads a Mach-O binary that can't
+# run. run_onchange_0004-brew-packages.sh.tmpl skips this line on Linux;
+# run_once_0021-install-junie-linux.sh.tmpl installs it there instead via
+# JetBrains' own install.sh, which does real per-OS detection.
+jetbrains/junie/junie
+
+# PHP
+php
+composer
+wp-cli

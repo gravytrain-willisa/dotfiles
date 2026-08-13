@@ -1,0 +1,34 @@
+#!/bin/bash
+{{- if eq .chezmoi.os "linux" }}
+# Removes the NOPASSWD sudoers drop-in installed by
+# run_once_before_0000-configure-sudo-timeout.sh.tmpl. That drop-in exists
+# only to get through this repo's own one-time bootstrap scripts (zsh
+# install, Homebrew's apt prerequisites, SDKMAN's `unzip`, pyenv's build
+# deps, `socat`, the SSH_AUTH_SOCK /etc/environment write, and the `chsh`
+# handoff) without repeated password prompts. Every one of those is a
+# run_once*/run_onchange* step that, by the time this `run_once_after`
+# script runs last, has already either run or been skipped for good — so
+# leaving passwordless root access installed indefinitely afterward serves
+# no further purpose here.
+#
+# If a later `chezmoi state delete-bucket --bucket=scriptState` forces one
+# of those earlier scripts to rerun by hand, it'll hit a normal interactive
+# sudo password prompt instead of NOPASSWD — expected and fine, since that's
+# a deliberate one-off rerun, not the first-time bootstrap path this rule
+# was scoped to.
+#
+# This is the happy-path removal — it only runs if every script before it in
+# this apply succeeded (chezmoi aborts the whole apply on the first failing
+# script, so a failure anywhere earlier means this one is never reached). A
+# self-healing check (in ~/.zshrc, written both by dot_zshrc.tmpl and
+# directly by run_once_before_0000 itself — see that script's comments) is
+# the backstop for that failure case: it tracks whether the `chezmoi apply`
+# that created the sudoers rule is still running via the PID recorded in
+# ~/.cache/dotfiles-sudo-timeout.pid, and removes the rule once that process
+# is gone, so a mid-apply failure doesn't leave NOPASSWD installed
+# indefinitely either.
+set -euo pipefail
+
+sudo rm -f /etc/sudoers.d/dotfiles-sudo-timeout
+rm -f "$HOME/.cache/dotfiles-sudo-timeout.pid"
+{{- end }}
