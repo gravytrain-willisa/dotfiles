@@ -26,7 +26,7 @@ git@github.com:Gravytrain-UK/gt-triton-core-database.git
 git@github.com:Gravytrain-UK/gt-triton-core-testpack.git
 git@github.com:Gravytrain-UK/gt-triton-email-templates.git
 git@github.com:Gravytrain-UK/gt-triton-front-end.git
-#git@github.com:Gravytrain-UK/gt-triton-insurance-engine.git
+git@github.com:Gravytrain-UK/gt-triton-insurance-engine.git
 git@github.com:Gravytrain-UK/gt-triton-insurance-openapi.git
 git@github.com:Gravytrain-UK/gt-triton-load-testing.git
 git@github.com:Gravytrain-UK/gt-triton-payment-fakeway.git
