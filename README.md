@@ -111,6 +111,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | Docker | Install Docker Desktop, if you want Docker image pulls (item 14, "Docker images") |
 | 1Password SSH Agent | 1Password → Settings → Developer → **Use the SSH Agent** (item 15, "1Password SSH agent relay") |
 | 1Password CLI integration | 1Password → Settings → Developer → **Integrate with 1Password CLI** — required for `op-login` and 1Password-backed `aws-vault` (item 17, "aws-vault") |
+| aws-vault env vars | Set `1password.op_vault_id`/`1password.op_account_id` in [`.chezmoidata/dotfiles.yaml`](.chezmoidata/dotfiles.yaml), then `chezmoi apply` — required before `aws-vault`/`aws-login` work at all, same as WSL (item 17, "aws-vault") |
 
 ### Optional, either platform
 
@@ -229,6 +230,14 @@ here. The setup installs the Windows AWS CLI for exactly this reason; if it
 was just installed, restart WSL (`wsl --shutdown` from Windows, then open a
 new terminal) so the new Windows `PATH` entry is picked up. See
 `docs/setup-sequence.md` item 17, "aws-vault".
+
+**`aws-vault` says `environment variable unset or empty: "OP_VAULT_ID"`** —
+happens on **macOS too**, not just WSL: `op-desktop` hard-requires a vault id
+(and an account id) with no fallback. Set `1password.op_vault_id`/`1password.op_account_id`
+in `.chezmoidata/dotfiles.yaml` (find the values with `op vault list` / `op
+account list --format=json` — use `account_uuid` from the JSON, not the
+`USER ID` column from the plain table), then `chezmoi apply` and open a new
+terminal. See `docs/setup-sequence.md` item 17, "aws-vault".
 
 **1Password prompts on every single `aws-vault`/`op-login` call** — expected;
 each is a fresh process with its own fresh authorization. `aws-login`/

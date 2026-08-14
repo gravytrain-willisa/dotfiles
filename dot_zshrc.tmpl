@@ -131,6 +131,18 @@ if command -v op.exe >/dev/null 2>&1; then
 fi
 {{- else if eq .chezmoi.os "darwin" }}
 export AWS_VAULT_BACKEND=op-desktop
+# op-desktop also hard-requires a vault + account id (fails with
+# `environment variable unset or empty: "OP_VAULT_ID"` otherwise) — unlike
+# WSL these are real shell exports here since aws-vault runs as a normal
+# native process, not a Windows binary WSL can't forward env vars to. Set
+# 1password.op_vault_id/op_account_id in .chezmoidata/dotfiles.yaml (see
+# README, "aws-vault env vars") to populate them.
+{{- if (index . "1password").op_vault_id }}
+export AWS_VAULT_OP_VAULT_ID="{{ (index . "1password").op_vault_id }}"
+{{- end }}
+{{- if (index . "1password").op_account_id }}
+export AWS_VAULT_OP_DESKTOP_ACCOUNT_ID="{{ (index . "1password").op_account_id }}"
+{{- end }}
 {{- end }}
 
 # op-login — exports whatever env vars are listed in op-env-vars.txt into

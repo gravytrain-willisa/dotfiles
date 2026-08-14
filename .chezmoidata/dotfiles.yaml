@@ -16,6 +16,20 @@ git:
 aws:
   default_region: eu-west-2
 
+# 1Password vault/account id — aws-vault's op-desktop backend (see
+# run_once_0015-install-aws-vault.sh.tmpl) hard-requires both, erroring
+# "environment variable unset or empty: OP_VAULT_ID" without them, on macOS
+# same as WSL. Leave blank until you've run `op vault list` / `op account
+# list --format=json` once to find your values (see README, "aws-vault env
+# vars"); dot_zshrc.tmpl only exports these on macOS when set (WSL sets its
+# own copies as persistent Windows env vars instead — see
+# docs/setup-sequence.md item 17). Key is quoted/accessed via `index` in
+# templates since Go templates can't dot into a field name starting with a
+# digit.
+"1password":
+  op_vault_id: "tp37ul3wds7rm4cszm7ug3d46y"
+  op_account_id: "T4HBK2Q3SBD6RIS3SWD5O57GL4"
+
 # Keyed by aws-vault profile name (the argument to `aws-login`), each mapped
 # to a LIST of domain configs — one profile/account can have more than one
 # CodeArtifact domain (e.g. two unrelated domains both reachable via the
