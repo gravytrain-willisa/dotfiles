@@ -503,23 +503,42 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       look at a *separate* `%USERPROFILE%\.aws\config` (not WSL's
       `~/.aws/config`) never actually comes up in practice.
 
-    **Important: env vars exported in `dot_zshrc.tmpl` do NOT reach
-    `aws-vault.exe`.** WSL does not forward exported shell variables to
-    invoked Windows processes by default — that requires explicitly listing
-    the variable in `WSLENV` with the `/u` flag, which this repo doesn't set
-    up. So anything `aws-vault`-related exported in `.zshrc` only affects
-    tools run *from inside WSL* — it's silently invisible to `aws-vault.exe`
-    itself, with no error to indicate it. Everything `op-desktop` needs has
-    to be set as a **persistent Windows user environment variable**
-    instead, via PowerShell's `[Environment]::SetEnvironmentVariable`
-    (registry-backed, same effect as `setx` but without `setx`'s obscure
-    1024-character value-length truncation bug). None of these have a
-    config file backing them in this repo, so if a value ever needs to
-    change, re-run the relevant command by hand. **Every one of these
-    requires closing the terminal window entirely and opening a genuinely
-    new one to take effect** — re-running a command in the same window
-    keeps using that session's original environment snapshot, which is the
-    single most common reason this looks broken when it isn't.
+    **`op-desktop` needs three env vars on every platform, not just WSL** —
+    `AWS_VAULT_BACKEND`, `AWS_VAULT_OP_VAULT_ID`, and
+    `AWS_VAULT_OP_DESKTOP_ACCOUNT_ID` all hard-fail with no fallback
+    regardless of OS. It's easy to assume this is a WSL-only concern (the
+    error first surfaced here via the Windows-binary path), but a plain
+    macOS `brew install aws-vault` hits the exact same
+    `environment variable unset or empty: "OP_VAULT_ID"` error if these
+    aren't set — the requirement comes from `op-desktop` itself, not from
+    anything WSL-specific.
+
+    **Where each one is set differs by platform, though:**
+    - **macOS**: `aws-vault` runs as a normal native process, so
+      `dot_zshrc.tmpl` can just `export` these directly — no forwarding
+      problem to work around. `AWS_VAULT_BACKEND` is exported unconditionally;
+      `AWS_VAULT_OP_VAULT_ID`/`AWS_VAULT_OP_DESKTOP_ACCOUNT_ID` are exported
+      only when `1password.op_vault_id`/`1password.op_account_id` are set in
+      `.chezmoidata/dotfiles.yaml` (find the values as described below, then
+      `chezmoi apply` and open a new terminal — same "stale environment"
+      caveat as the Windows case).
+    - **WSL**: env vars exported in `dot_zshrc.tmpl` do NOT reach
+      `aws-vault.exe`. WSL does not forward exported shell variables to
+      invoked Windows processes by default — that requires explicitly listing
+      the variable in `WSLENV` with the `/u` flag, which this repo doesn't set
+      up. So anything `aws-vault`-related exported in `.zshrc` only affects
+      tools run *from inside WSL* — it's silently invisible to `aws-vault.exe`
+      itself, with no error to indicate it. Everything `op-desktop` needs has
+      to be set as a **persistent Windows user environment variable**
+      instead, via PowerShell's `[Environment]::SetEnvironmentVariable`
+      (registry-backed, same effect as `setx` but without `setx`'s obscure
+      1024-character value-length truncation bug). None of these have a
+      config file backing them for WSL, so if a value ever needs to change,
+      re-run the relevant command by hand. **Every one of these requires
+      closing the terminal window entirely and opening a genuinely new one
+      to take effect** — re-running a command in the same window keeps using
+      that session's original environment snapshot, which is the single most
+      common reason this looks broken when it isn't.
 
     **Manual one-time setup, on Windows, in the 1Password desktop app**
     (nothing here can script a GUI toggle):
@@ -532,9 +551,9 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
        separate aws-vault-specific setting.
     3. `winget` itself must be present (ships by default on Windows 11).
 
-    **Required environment variables** (`op-desktop` fails outright without
-    any of these three — none of them fall back to some sensible default
-    despite how optional they sound in aws-vault's own docs):
+    **Required environment variables, WSL** (`op-desktop` fails outright
+    without any of these three — none of them fall back to some sensible
+    default despite how optional they sound in aws-vault's own docs):
 
     - **`AWS_VAULT_BACKEND`** — without this, aws-vault silently uses
       Windows' own default backend (`wincred`, Windows Credential Manager)
@@ -567,6 +586,24 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       ```powershell
       [Environment]::SetEnvironmentVariable("AWS_VAULT_OP_DESKTOP_ACCOUNT_ID", "<account_uuid-from-json>", "User")
       ```
+
+    **Required values, macOS** — same two identifiers, same failure modes
+    (`OP_VAULT_ID` unset / account not found), but sourced into
+    `dot_zshrc.tmpl` from `.chezmoidata/dotfiles.yaml` instead of set by
+    hand per-machine (`AWS_VAULT_BACKEND` is exported unconditionally
+    already, no config needed for that one). Same `op` CLI, no `.exe`:
+    ```bash
+    op vault list
+    op account list --format=json   # use account_uuid, not user_uuid
+    ```
+    Put both in `.chezmoidata/dotfiles.yaml`:
+    ```yaml
+    aws:
+      op_vault_id: "<uuid-from-vault-list>"
+      op_account_id: "<account_uuid-from-json>"
+    ```
+    then `chezmoi apply` and open a new terminal — a `chezmoi apply` in the
+    same window doesn't refresh the current shell's environment either.
 
     After setting all three (**new terminal window required**), the first
     `aws-vault` command that touches 1Password (e.g. `aws-vault add
