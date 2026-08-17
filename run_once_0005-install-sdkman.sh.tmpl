@@ -36,3 +36,18 @@ if [ -f "$SDKMAN_CONFIG" ] && grep -q '^sdkman_auto_answer=' "$SDKMAN_CONFIG"; t
   awk '{sub(/^sdkman_auto_answer=.*/, "sdkman_auto_answer=false")}1' \
     "$SDKMAN_CONFIG" >"$SDKMAN_CONFIG.tmp" && mv "$SDKMAN_CONFIG.tmp" "$SDKMAN_CONFIG"
 fi
+
+# sdkman_auto_env=true makes `sdk use` fire automatically on `cd` into a
+# directory containing a per-project `.sdkmanrc` (see the README's Notes
+# section on pinning per-project tool versions) — unlike sdkman_auto_answer
+# above, this only ever acts on a version *you've explicitly pinned* in that
+# file, so it can't silently drift to whatever upstream currently
+# recommends the way auto_answer did.
+if [ -f "$SDKMAN_CONFIG" ]; then
+  if grep -q '^sdkman_auto_env=' "$SDKMAN_CONFIG"; then
+    awk '{sub(/^sdkman_auto_env=.*/, "sdkman_auto_env=true")}1' \
+      "$SDKMAN_CONFIG" >"$SDKMAN_CONFIG.tmp" && mv "$SDKMAN_CONFIG.tmp" "$SDKMAN_CONFIG"
+  else
+    echo "sdkman_auto_env=true" >>"$SDKMAN_CONFIG"
+  fi
+fi

@@ -569,7 +569,10 @@ automatic/instant even with sparse mode on.
   WSL's native filesystem.
 - Pin per-project tool versions with `.sdkmanrc`, `.nvmrc`, and
   `.python-version` inside each project repo — the manifests here are only
-  for genuinely global, always-want-it tools.
+  for genuinely global, always-want-it tools. SDKMAN's `sdkman_auto_env` is
+  enabled (see `docs/setup-sequence.md` item 6), so `cd`-ing into a directory
+  with a `.sdkmanrc` automatically runs `sdk use` for you — no need to run it
+  by hand.
 - Per-directory git identity (`~/.gitconfig` `includeIf`) and `~/.ssh/config`
   per-host identity aliases, both covered in the cross-platform dev setup doc
   this repo is built from, are deliberately not managed here yet — this

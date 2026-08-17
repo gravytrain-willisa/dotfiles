@@ -251,6 +251,19 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    avoids the prompt a different way instead: it just doesn't call `sdk
    upgrade` at all. If a previous apply already flipped this to `true` on a
    given machine, this script explicitly resets it back to `false`.
+
+   **Sets `sdkman_auto_env=true`** — the opposite risk profile from
+   `sdkman_auto_answer`, so it's fine to enable unconditionally: it makes
+   `sdk use` fire automatically on `cd` into a directory containing a
+   per-project [`.sdkmanrc`](https://sdkman.io/usage/#use-version), and only
+   ever switches to a version *you've explicitly pinned* in that file — it
+   can't drift to whatever upstream recommends the way `auto_answer` did.
+   Same replace-if-present/append-if-absent handling as `auto_answer` above,
+   against the same `~/.sdkman/etc/config` file. Being `run_once`, this only
+   takes effect on a fresh SDKMAN install or after a forced re-run (`chezmoi
+   state delete-bucket --bucket=scriptState`, per the CLAUDE.md/README
+   commands) — it does not retroactively flip the setting on a machine that
+   already has SDKMAN installed and won't otherwise re-run this script.
 7. **SDKMAN candidates** — installed from
    [`dot_config/dotfiles/sdkman-packages.txt`](../dot_config/dotfiles/sdkman-packages.txt)
    (ships with Java 21 and Java 11 Corretto — 21 pinned as the default via
