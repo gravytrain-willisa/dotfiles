@@ -1,0 +1,44 @@
+#!/bin/bash
+# Managed by chezmoi — edit dot_local/bin/executable_git-ssh-sign-with-agent.tmpl
+# in the dotfiles source repo, not this file directly.
+#
+# git's gpg.ssh.program (set in dot_gitconfig.tmpl) points at this wrapper
+# instead of ssh-keygen directly. Why: commit signing (gpg.format = ssh,
+# commit.gpgsign = true) runs `ssh-keygen -Y sign`, a separate code path from
+# core.sshCommand — it reads SSH_AUTH_SOCK straight from the process
+# environment rather than going through any git-configurable ssh wrapper. An
+# IDE's own git integration (IntelliJ, VS Code) on WSL invokes git by calling
+# wsl.exe directly, e.g. `wsl.exe -d Ubuntu-26.04 -e git commit ...`, which
+# skips login shells/PAM entirely — so SSH_AUTH_SOCK is unset there for the
+# same reason it was unset for transport before git-ssh-with-agent existed
+# (see that file). Without this wrapper, IntelliJ commits fail signing with
+# "Couldn't get agent socket? / fatal: failed to write commit object" even
+# though fetch/push already work.
+#
+# Same shared liveness-probe/relay-restart logic as git-ssh-with-agent.
+{{ template "ssh-agent-sock.sh.tmpl" . }}
+
+# The relay/agent connection is occasionally flaky on its own — a fresh
+# npiperelay pipe instance can take a moment to settle, and retrying
+# `ssh-keygen -Y sign` from scratch is always safe (it's a stateless
+# signing operation with no partial-transfer state to worry about).
+# Confirmed empirically: back-to-back real invocations against a socket
+# that was just reported "live" by the probe above still intermittently
+# fail with "Couldn't find key in agent?"/"communication with agent
+# failed" — a short plain retry clears it up every time in testing,
+# whereas re-running the probe/restart dance per attempt does not (and
+# adds more load to the same limited named-pipe resource). Only fall back
+# to that heavier recovery if plain retries are exhausted.
+attempt=1
+while [ "$attempt" -le 3 ]; do
+  if ssh-keygen "$@"; then
+    exit 0
+  fi
+  attempt=$((attempt + 1))
+  sleep 0.3
+done
+# Still failing after plain retries — the relay itself may genuinely be
+# dead, so pay for the heavier probe/restart-and-wait recovery once more
+# before giving up.
+{{ template "ssh-agent-sock.sh.tmpl" . }}
+exec ssh-keygen "$@"

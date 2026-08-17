@@ -313,6 +313,22 @@ ls -l ~/.local/bin/git-ssh-with-agent
 ```
 and re-run `chezmoi apply -v` if either is missing/stale.
 
+**IntelliJ fails a commit with `Couldn't get agent socket? / fatal: failed
+to write commit object`, even though `fetch`/`push` work fine** — commit
+signing (`gpg.format = ssh`) runs `ssh-keygen -Y sign`, a separate code path
+from `core.sshCommand` that reads `SSH_AUTH_SOCK` straight from the process
+environment. It hits the exact same `wsl.exe -e` bypasses-PAM gap as the
+transport fix above, just at the signing step instead. Fixed the same way:
+`gpg.ssh.program` in `dot_gitconfig.tmpl` points at
+`~/.local/bin/git-ssh-sign-with-agent`
+(`dot_local/bin/executable_git-ssh-sign-with-agent.tmpl`), which sets
+`SSH_AUTH_SOCK` before `exec ssh-keygen "$@"`. Verify:
+```bash
+wsl.exe -d <distro> --cd <project-dir> -e git commit --allow-empty -m "test"
+git config --get gpg.ssh.program
+ls -l ~/.local/bin/git-ssh-sign-with-agent
+```
+
 **Docker image pulls were skipped** — Docker Desktop isn't installed/running,
 or (WSL) its WSL2 integration isn't enabled. Install/start it, then re-run
 `chezmoi apply`.
