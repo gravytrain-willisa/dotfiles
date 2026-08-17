@@ -21,4 +21,29 @@
 # any inherited environment at all, so it's correct no matter how git itself
 # was launched.
 {{ template "ssh-agent-sock.sh.tmpl" . }}
+
+# The relay/agent connection is occasionally flaky on its own — a fresh
+# npiperelay pipe instance can take a moment to settle, and retrying ssh
+# from scratch is safe here: a failed attempt means the connection/auth
+# never got established (no git protocol data has flowed yet), so a fresh
+# attempt is exactly as safe as if it were the only one. Confirmed
+# empirically: back-to-back real invocations against a socket the probe
+# above just reported "live" still intermittently fail with "Couldn't find
+# key in agent?"/"communication with agent failed" — a short plain retry
+# clears it up every time in testing, whereas re-running the probe/restart
+# dance per attempt does not (and adds more load to the same limited
+# named-pipe resource). Only fall back to that heavier recovery if plain
+# retries are exhausted.
+attempt=1
+while [ "$attempt" -le 3 ]; do
+  if ssh "$@"; then
+    exit 0
+  fi
+  attempt=$((attempt + 1))
+  sleep 0.3
+done
+# Still failing after plain retries — the relay itself may genuinely be
+# dead, so pay for the heavier probe/restart-and-wait recovery once more
+# before giving up.
+{{ template "ssh-agent-sock.sh.tmpl" . }}
 exec ssh "$@"

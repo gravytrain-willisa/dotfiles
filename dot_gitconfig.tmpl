@@ -31,6 +31,16 @@
   # is broken when it isn't. Generated from the same .chezmoidata values
   # as [user] above, see dot_config/git/allowed_signers.tmpl.
   allowedSignersFile = ~/.config/git/allowed_signers
+  # gpg.ssh.program is what git actually invokes to sign (`ssh-keygen -Y
+  # sign`) — a separate code path from core.sshCommand/transport below, and
+  # it reads SSH_AUTH_SOCK straight from the process environment rather than
+  # going through any wrapper on its own. Same wsl.exe-bypasses-PAM gap as
+  # core.sshCommand, just hit at the signing step instead of fetch/push:
+  # IntelliJ's WSL git integration would otherwise fail commits with
+  # "Couldn't get agent socket? / fatal: failed to write commit object" even
+  # with the transport fix in place. See
+  # dot_local/bin/executable_git-ssh-sign-with-agent.tmpl.
+  program = {{ .chezmoi.homeDir }}/.local/bin/git-ssh-sign-with-agent
 [commit]
   gpgsign = true
 {{- end }}
@@ -54,3 +64,8 @@
   # (publickey)" from the IDE while a terminal in the same WSL instance
   # worked fine. See dot_local/bin/executable_git-ssh-with-agent.tmpl.
   sshCommand = {{ .chezmoi.homeDir }}/.local/bin/git-ssh-with-agent
+[push]
+  # Push a newly-created local branch without first typing --set-upstream —
+  # git otherwise refuses with "no upstream branch" on every brand-new
+  # branch's first push.
+  autoSetupRemote = true

@@ -1025,6 +1025,13 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     wsl.exe -d <distro> --cd <project-dir> -e git fetch origin --prune
     ```
 
+    That fix covers SSH *transport* only. Commit signing (below) hits the
+    identical `wsl.exe`-bypasses-PAM gap through a completely separate git
+    code path — `ssh-keygen -Y sign`, not `ssh` — so `core.sshCommand` alone
+    still left IntelliJ commits failing with `Couldn't get agent socket? /
+    fatal: failed to write commit object`. See `gpg.ssh.program` under
+    "Commit signing" below for the matching fix.
+
     `[user]` (`name`/`email`) is set from `.chezmoidata/dotfiles.yaml`'s
     `git.name`/`git.email` — one global identity for now. No `includeIf`
     per-context identity switching yet — see "Notes" in the README for why
@@ -1055,6 +1062,24 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     rather than just going unsigned:
     ```bash
     ssh-add -l   # the listed fingerprint must match git.signing_key's
+    ```
+
+    **`gpg.ssh.program`** points at
+    [`dot_local/bin/executable_git-ssh-sign-with-agent.tmpl`](../dot_local/bin/executable_git-ssh-sign-with-agent.tmpl)
+    (→ `~/.local/bin/git-ssh-sign-with-agent`) instead of calling
+    `ssh-keygen` directly — the same fix as `core.sshCommand` above, just for
+    signing instead of transport. Signing runs `ssh-keygen -Y sign`, which
+    reads `SSH_AUTH_SOCK` straight from the process environment; IntelliJ's
+    WSL git integration launches git via `wsl.exe -e`, skipping PAM the same
+    way it does for fetch/push, so without this wrapper a commit fails with
+    `Couldn't get agent socket? / fatal: failed to write commit object` even
+    though the transport fix already has fetch/push working. The wrapper
+    reuses the same
+    [`.chezmoitemplates/ssh-agent-sock.sh.tmpl`](../.chezmoitemplates/ssh-agent-sock.sh.tmpl)
+    snippet, then `exec ssh-keygen "$@"`. Verify the same way — replicate
+    IntelliJ's exact invocation:
+    ```bash
+    wsl.exe -d <distro> --cd <project-dir> -e git commit --allow-empty -m "test"
     ```
 
     Signing and verifying are separate halves, and the config above only
