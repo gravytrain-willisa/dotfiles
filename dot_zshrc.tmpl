@@ -565,10 +565,34 @@ gradle-refresh-dependencies() {
   # (Main/Test/IntegrationTest/...), not just the two most common ones.
   local exclude_flags=()
   local task
-  while IFS= read -r task; do
-    [ -n "$task" ] && exclude_flags+=(-x "$task")
-  done < <(./gradlew tasks --all --console=plain -q 2>/dev/null \
-    | grep -oE '^(checkstyle|spotbugs)[A-Za-z0-9]*' | sort -u)
+  # `tasks --all` pays the same full project-configuration cost as the real
+  # build below — for a large multi-module project that's the expensive
+  # part of any Gradle invocation, so running it twice roughly doubles the
+  # wall-clock time every single call. Cache the discovered task list on
+  # disk and only redo the discovery when a build/settings file has
+  # actually changed since, so repeat runs against the same project (the
+  # common case for this alias) skip the second full configuration pass.
+  local cache_file=".gradle/gradle-refresh-dependencies-excludes"
+  # `-quit` is a GNU find extension BSD/macOS find lacks — `head -1` gets
+  # the same early-exit effect (find gets SIGPIPE once head stops reading)
+  # portably across both.
+  if [ -f "$cache_file" ] && [ -z "$(find . \( -name 'build.gradle' -o -name 'build.gradle.kts' -o -name 'settings.gradle' -o -name 'settings.gradle.kts' \) -newer "$cache_file" 2>/dev/null | head -1)" ]; then
+    while IFS= read -r task; do
+      [ -n "$task" ] && exclude_flags+=(-x "$task")
+    done <"$cache_file"
+  else
+    # `-q` here would suppress Gradle's own configuration/progress output —
+    # while this is (re)computing, a quiet run just sits there printing
+    # nothing until it's done, which looks identical to a hang.
+    echo "gradle-refresh-dependencies: discovering checkstyle/spotbugs tasks to exclude..." >&2
+    mkdir -p "$(dirname "$cache_file")"
+    ./gradlew tasks --all --console=plain \
+      | grep -oE '^(checkstyle|spotbugs)[A-Za-z0-9]*' | sort -u >"$cache_file"
+    while IFS= read -r task; do
+      [ -n "$task" ] && exclude_flags+=(-x "$task")
+    done <"$cache_file"
+  fi
+  echo "gradle-refresh-dependencies: running refresh-dependencies build..." >&2
   ./gradlew --refresh-dependencies clean build -x test "${exclude_flags[@]}"
 }
 alias gradle-show-dependency-updates='./gradlew --refresh-dependencies dependencyUpdates'
