@@ -485,6 +485,7 @@ Install scripts, in execution order (see docs/setup-sequence.md)
   run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl
   run_once_0021-install-junie-linux.sh.tmpl             (Linux only)
   run_once_after_0022-remove-sudo-timeout.sh.tmpl       (Linux only, runs last)
+  run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl (WSL only)
 ```
 
 ## WSL2 disk space management (Windows side, manual)

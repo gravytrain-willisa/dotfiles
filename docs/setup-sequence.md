@@ -58,10 +58,10 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    than letting a bare `[sudo: authenticate] Password:` be the first thing
    a fresh install shows.
 
-   The drop-in is temporary, not left installed indefinitely — item 26
+   The drop-in is temporary, not left installed indefinitely — item 27
    removes it again once every script above has had a chance to run. But
    chezmoi aborts the entire rest of the apply the moment any one script
-   exits non-zero, so a failure in any script between this one and item 26
+   exits non-zero, so a failure in any script between this one and item 27
    (a flaky network install, a bad package) would otherwise leave the
    removal step unreached and NOPASSWD installed forever, with nothing left
    running to clean it up.
@@ -1243,7 +1243,37 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     automation would either hang waiting for input or silently skip those
     prompts. Scheduling this (launchd on macOS, a shell-startup staleness
     check on WSL) is still open — see the doc's §4 if that's wanted later.
-26. **Remove the bootstrap sudo NOPASSWD rule (Linux only)** —
+26. **Hourly `/tmp` cleanup timer (WSL only)** —
+    [`run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl`](../run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl)
+    tightens Ubuntu's stock `/tmp` cleanup from once a day
+    (`systemd-tmpfiles-clean.timer`'s default `OnUnitActiveSec=1d`) and a
+    10-day retention age (`/usr/lib/tmpfiles.d/tmp.conf`:
+    `q /tmp 1777 root root 10d`) down to hourly and a 1-day age — a 10x
+    tighter retention while still safely covering any single build/dev
+    session (Gradle/Docker/pip/npm temp files) that finishes within a day.
+    Writes a full-replacement `/etc/tmpfiles.d/tmp.conf` (same filename as
+    the upstream file, which it fully masks — tmpfiles.d config resolution
+    is by filename, not merged per line, so every upstream line has to be
+    repeated, not just the changed one; X11/ICE-unix socket protection
+    lives in a separate upstream file, `x11.conf`, untouched here) plus a
+    `systemd-tmpfiles-clean.timer.d/override.conf` drop-in resetting
+    `OnUnitActiveSec` before setting it to `1h` (repeatable timer
+    directives accumulate across drop-ins rather than replacing, so
+    skipping the reset would fire the timer on both the old and new
+    cadence). Guarded at runtime on `[ -d /run/systemd/system ]` — skips
+    quietly rather than failing the apply if this WSL instance hasn't
+    opted into `systemd=true` in `/etc/wsl.conf` — the same "systemd on
+    WSL2 is best-effort" precedent as item 15's SSH-agent-relay unit and
+    item 0's sudo NOPASSWD backstop.
+
+    Considered `tmpreaper` (Ubuntu `universe`) as an alternative on the
+    premise that it checks for open file handles before deleting — its man
+    page and packaged `cron.daily` script confirm it does not; it's purely
+    atime/mtime/ctime-based, same as `systemd-tmpfiles`. Not worth the
+    trade of a new package (whose own docs warn against unattended use), a
+    `cron.daily`-based mechanism this repo uses nowhere else, and a second
+    cleanup mechanism racing this one on the same directory.
+27. **Remove the bootstrap sudo NOPASSWD rule (Linux only)** —
     [`run_once_after_0022-remove-sudo-timeout.sh.tmpl`](../run_once_after_0022-remove-sudo-timeout.sh.tmpl)
     deletes `/etc/sudoers.d/dotfiles-sudo-timeout` and
     `~/.cache/dotfiles-sudo-timeout.pid`, both installed by item 0 above.
