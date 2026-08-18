@@ -1,0 +1,65 @@
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) -}}
+#!/bin/bash
+# Ubuntu's stock /tmp cleanup only runs once a day
+# (systemd-tmpfiles-clean.timer) and only removes files idle 10+ days
+# (/usr/lib/tmpfiles.d/tmp.conf: `q /tmp 1777 root root 10d`) — tightened
+# here to hourly / 1 day. 1 day, not something more aggressive: it still
+# safely covers any single build/dev session (Gradle/Docker/pip/npm temp
+# files) that finishes within a day, while cutting the stock retention by
+# 10x; a much shorter age risks deleting a still-running long build's temp
+# files out from under it. Considered `tmpreaper` as an alternative — its
+# selling point looked like "checks for open files" — but its own man page
+# confirms it has no such check at all, it's purely atime/mtime/ctime-based
+# exactly like systemd-tmpfiles; adopting it would also mean a new package,
+# a cron.daily-based mechanism this repo has never used anywhere else, and
+# a second cleanup mechanism racing this one on the same directory, for no
+# actual safety gain.
+set -euo pipefail
+
+# systemd-tmpfiles-clean.timer is a *system* unit; only meaningful if this
+# WSL instance actually boots with systemd as PID 1 (opt-in via
+# `systemd=true` in /etc/wsl.conf). Skip quietly rather than fail the whole
+# apply when it isn't — same "systemd on WSL2 is best-effort, never a hard
+# dependency" precedent as run_onchange_0020's SSH-agent-relay unit and
+# run_once_before_0000's sudo-timeout backstop.
+if [ ! -d /run/systemd/system ]; then
+  echo "systemd is not running as PID 1 — skipping hourly /tmp cleanup timer" >&2
+  exit 0
+fi
+
+# Same filename as the packaged /usr/lib/tmpfiles.d/tmp.conf, which this
+# fully masks — tmpfiles.d config resolution is by filename, not merged
+# per-line — so every line from upstream has to be repeated here, not just
+# the one being changed. Only the /tmp age differs from stock Ubuntu 26.04
+# (10d -> 1d); /var/tmp is left at its default. X11/ICE-unix socket
+# protection lives in a separate upstream file (x11.conf), untouched here.
+sudo install -d -m 0755 -o root -g root /etc/tmpfiles.d
+sudo tee /etc/tmpfiles.d/tmp.conf >/dev/null <<'EOF'
+# Managed by chezmoi (run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl)
+# — masks /usr/lib/tmpfiles.d/tmp.conf. Only the /tmp line's age differs
+# from upstream (10d -> 1d); paired with the hourly timer override below so
+# /tmp actually gets swept close to that age instead of up to a day late.
+q /tmp 1777 root root 1d
+q /var/tmp 1777 root root 30d
+EOF
+
+# OnUnitActiveSec accumulates across drop-ins rather than replacing, so it
+# must be reset (empty assignment) before setting the new interval, or the
+# timer would fire on both the stock 1d cadence and this 1h one.
+sudo install -d -m 0755 -o root -g root /etc/systemd/system/systemd-tmpfiles-clean.timer.d
+sudo tee /etc/systemd/system/systemd-tmpfiles-clean.timer.d/override.conf >/dev/null <<'EOF'
+# Managed by chezmoi (run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl)
+[Timer]
+OnUnitActiveSec=
+OnUnitActiveSec=1h
+EOF
+
+sudo systemctl daemon-reload
+# systemd-tmpfiles-clean.timer ships with no [Install] section — it's
+# "static", pulled in by a packaged timers.target.wants/ symlink rather
+# than anything `systemctl enable` can act on, so enabling it here would
+# only print "not meant to be enabled" and do nothing. `restart` (not just
+# `daemon-reload`) is what actually matters: it makes the new interval take
+# effect immediately instead of waiting for the next stock-scheduled fire.
+sudo systemctl restart systemd-tmpfiles-clean.timer
+{{- end }}
