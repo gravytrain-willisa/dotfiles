@@ -1,0 +1,18 @@
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) -}}
+#!/bin/bash
+# Installs the JRebel agent (hot-reloading a running JVM instead of
+# rebuild/restart/redeploy) into $HOME/.local/share/jrebel — WSL2 only, since
+# this is a per-developer IDE/JVM tool, not something server images need.
+#
+# Scoped to genuine WSL2 (kernel release contains "microsoft"), matching this
+# repo's other WSL-only installs (run_once_0014-install-1password-ssh-relay,
+# run_onchange_0023-configure-tmp-cleanup-timer) — no equivalent macOS branch
+# exists here (add one if this is ever needed on Homebrew/macOS too).
+#
+# `update-all` (dot_zshrc.tmpl) re-runs the same download via
+# .chezmoitemplates/jrebel-install.sh.tmpl to pick up new stable releases —
+# this script only handles first install, so it's run_once rather than
+# run_onchange (there's no version manifest to hash/trigger off).
+set -euo pipefail
+{{ template "jrebel-install.sh.tmpl" . }}
+{{- end }}

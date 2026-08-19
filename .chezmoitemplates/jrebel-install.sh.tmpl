@@ -1,0 +1,32 @@
+{{/* Reusable snippet: download and extract the JRebel agent into
+     $JREBEL_HOME (set alongside this by dot_zshrc.tmpl). Included via
+     {{ template "jrebel-install.sh.tmpl" . }} by both
+     run_once_0024-install-jrebel-agent.sh.tmpl (first install) and
+     dot_zshrc.tmpl's update-all (refresh) — one copy of the download logic
+     for both call sites.
+
+     Always pulls zeroturnaround's rolling "stable" zip rather than a pinned
+     version: that URL is maintained upstream to always point at the current
+     stable release, so there's no local version-check to maintain — the
+     vendor does that for us.
+
+     The zip's own top-level entry is a "jrebel/" directory, not its
+     contents directly — extracting into $JREBEL_HOME's *parent* (not
+     $JREBEL_HOME itself) is what makes that "jrebel/" folder land exactly
+     at $JREBEL_HOME, rather than nesting an extra .../jrebel/jrebel/.
+
+     $JREBEL_HOME is removed before every extract, not just overwritten via
+     `unzip -o` in place — `unzip -o` only overwrites files the new zip
+     actually contains, so anything left over from a stale layout (like the
+     old .../jrebel/jrebel/ nesting this had before the parent-dir fix above)
+     would otherwise sit there forever, never cleaned up by a later
+     update-all/update-jrebel. Safe to remove outright: this directory only
+     ever holds this download's own extracted contents, nothing
+     user-created. */ -}}
+JREBEL_PARENT_DIR="$HOME/.local/share"
+mkdir -p "$JREBEL_PARENT_DIR"
+rm -rf "$JREBEL_PARENT_DIR/jrebel"
+JREBEL_TMP_DIR="$(mktemp -d)"
+curl -fsSL -o "$JREBEL_TMP_DIR/jrebel.zip" "https://dl.zeroturnaround.com/jrebel-stable-nosetup.zip"
+unzip -o "$JREBEL_TMP_DIR/jrebel.zip" -d "$JREBEL_PARENT_DIR"
+rm -rf "$JREBEL_TMP_DIR"

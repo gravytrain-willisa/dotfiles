@@ -84,6 +84,21 @@ fi
 # any interactive shell has run, see .chezmoitemplates/ssh-agent-sock.sh.tmpl.
 {{ template "ssh-agent-sock.sh.tmpl" . }}
 
+# JRebel agent — WSL only (installed by run_once_0024-install-jrebel-agent.sh.tmpl,
+# refreshed by update-all below). JREBEL_HOME lets IDE plugins/`-javaagent:`
+# invocations reference the install dir instead of a hardcoded path.
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+export JREBEL_HOME="$HOME/.local/share/jrebel"
+
+# update-jrebel — same download update-all already folds in, exposed
+# standalone since a JRebel release can land between full update-all runs
+# and there's no reason to also re-run brew/apt/SDKMAN just to pick it up.
+update-jrebel() {
+  echo "==> Updating JRebel agent" >&2
+  {{ template "jrebel-install.sh.tmpl" . }}
+}
+{{- end }}
+
 # AWS region fallback — dot_aws/config.tmpl only sets this for the [default]
 # profile; named profiles (aws-vault or otherwise) don't inherit region from
 # it. AWS_REGION/AWS_DEFAULT_REGION are the SDK's actual "if this profile
@@ -535,6 +550,10 @@ update-all() {
   echo "==> sdk selfupdate && sdk update" >&2
   sdk selfupdate && sdk update
 
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+  update-jrebel
+{{- end }}
+
   # `chezmoi update` above can change dot_zshrc.tmpl itself (new functions/
   # aliases/exports) — this shell's already-running zsh process keeps
   # whatever it loaded at startup, so without this you'd have update-all's
@@ -652,7 +671,8 @@ Credential/ secret management:
   op-login                          Export 1Password-backed env vars (op-env-vars.txt) into this shell.
 
 Updates/maintenance:
-  update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, and npm globals.
+  update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, npm globals, and the JRebel agent (WSL only).
+  update-jrebel                     Update just the JRebel agent (WSL only).
   docker-update-images              Re-pull the current tag of every locally present Docker image.
   docker-prune-all                  Prune all docker data except for images (alias for `docker system prune --volumes -f`).
 
