@@ -1224,7 +1224,10 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     version that doesn't have `npm-check-updates` installed (only installed
     on Node >=22 per `node-globals.txt`) rather than erroring; and finally
     `sdk selfupdate && sdk update` (SDKMAN's own updater, plus refreshing its
-    candidate metadata).
+    candidate metadata); and, on WSL only, re-downloading the JRebel agent
+    (see item 28) via the same `.chezmoitemplates/jrebel-install.sh.tmpl`
+    snippet its install script uses — there's no local version pinned to
+    bump, since the download URL is zeroturnaround's rolling "stable" zip.
     **Deliberately no `sdk upgrade`** — unlike brew/apt, SDKMAN candidate
     versions are pinned in `sdkman-packages.txt` (same `default`-marker
     convention as `nvm-versions.txt`/`pyenv-versions.txt`), not left to
@@ -1292,6 +1295,55 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     backstop (see item 0) covers exactly that failure case, so the rule
     still gets removed — on the next new shell, rather than never — even if
     something earlier in the apply fails.
+28. **JRebel agent (WSL only)** —
+    [`run_once_0024-install-jrebel-agent.sh.tmpl`](../run_once_0024-install-jrebel-agent.sh.tmpl)
+    downloads and extracts the JRebel agent (hot-reloading a running JVM
+    instead of rebuild/restart/redeploy) into `$HOME/.local/share/jrebel`,
+    via the shared
+    [`.chezmoitemplates/jrebel-install.sh.tmpl`](../.chezmoitemplates/jrebel-install.sh.tmpl)
+    snippet. `dot_zshrc.tmpl` exports `JREBEL_HOME` pointing at that
+    directory (WSL only) so IDE plugin config / `-javaagent:` flags can
+    reference it rather than a hardcoded path. Scoped to WSL2 only — this is
+    a per-developer IDE/JVM tool, not something server images need (mirrors
+    `../sysadmin-tools/bin/jrebel-update.sh`, which does the same
+    download/extract on servers, but into `/opt` with `sudo` — this install
+    stays user-space instead, matching nvm/pyenv/sdkman/npiperelay elsewhere
+    in this repo). Downloads zeroturnaround's rolling "stable" zip
+    (`https://dl.zeroturnaround.com/jrebel-stable-nosetup.zip`), which the
+    vendor always keeps pointed at the current stable release — so there's
+    no local version to check or bump, and `unzip -o` overwrites safely on
+    every re-run. `run_once`, not `run_onchange`, since there's no version
+    manifest to hash/trigger a re-run off — item 25's `update-all` is what
+    refreshes the install afterward, on the same rolling URL. `dot_zshrc.tmpl`
+    also defines a standalone `update-jrebel` function (WSL only) wrapping
+    the same `.chezmoitemplates/jrebel-install.sh.tmpl` snippet, so a new
+    JRebel release can be picked up without waiting for (or triggering) a
+    full `update-all` run — `update-all` itself just calls `update-jrebel`
+    rather than duplicating the download logic a third time.
+
+    **IntelliJ needs this configured by hand, not via chezmoi.** An earlier
+    version of this setup also tried exporting `WINHOME`/`REBEL_BASE` and
+    auto-appending `-agentpath:...` to `JAVA_TOOL_OPTIONS`, both as a
+    `dot_zshrc.tmpl` shell export and as a static `/etc/environment` entry
+    (mirroring `SSH_AUTH_SOCK`'s pattern — see item 15/step 20). Neither
+    reaches IntelliJ's own JVM launch: confirmed empirically
+    (`wsl.exe -d <distro> -e printenv JAVA_TOOL_OPTIONS` came back empty even
+    with `/etc/environment` correctly populated) that IntelliJ's WSL JDK
+    support execs `java` straight via `wsl.exe -e`, the same PAM-bypassing
+    path documented for its git integration in README.md's troubleshooting
+    section — and unlike git (`core.sshCommand`/`gpg.ssh.program`), there's
+    no config point to redirect `java` through a wrapper: IntelliJ resolves
+    the JDK to an absolute path (typically through SDKMAN's
+    `candidates/java/current/bin/java` symlink chain) and execs that
+    directly, so a wrapper would mean replacing the resolved `java` binary
+    itself, which `sdk install`/`sdk upgrade` would silently overwrite or
+    bypass. That approach was reverted entirely — see README.md's "Using
+    JRebel from an IntelliJ WSL run target" for what actually has to be set,
+    by hand, on the Run/Debug Configuration (or WSL run target) instead:
+    `JAVA_TOOL_OPTIONS` with `-agentpath:$JREBEL_HOME/lib/libjrebel64.so` plus
+    project- and user-specific `-Drebel.*` system properties, none of which
+    chezmoi can template (two of the four values are inherently
+    per-person/per-project).
 ## Manifest conventions
 
 Each numbered manifest (`*.txt`) is a plain newline-delimited list — blank
