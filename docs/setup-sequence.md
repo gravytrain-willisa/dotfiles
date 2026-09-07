@@ -1237,7 +1237,19 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     the command) silently pulled in a completely different JDK
     vendor/version than the one pinned here — see item 6. Bump the version
     in `sdkman-packages.txt` instead, same as any other manifest in this
-    repo. Ends with `exec zsh`, since `chezmoi update` can change
+    repo. On WSL only, also runs `winget.exe upgrade --id ...` for each of
+    the four packages this setup installs via winget
+    (`Starship.Starship`, `ByteNess.AWSVault`, `Amazon.AWSCLI`,
+    `AgileBits.1Password.CLI` — see items 15 and 19) — these are
+    Windows-native binaries outside WSL's brew/apt, so nothing above this
+    step ever touches them, and they'd otherwise silently drift out of
+    date (observed in practice: a Windows-side AWS CLI several patch
+    versions behind the WSL-side one). Deliberately scoped to just these
+    IDs rather than `winget upgrade --all`, which would also upgrade
+    unrelated Windows apps the user installed themselves; `|| true` per
+    ID since `winget upgrade --id` exits non-zero when a package is
+    already current, which shouldn't stop the rest of the loop or
+    `update-all`. Ends with `exec zsh`, since `chezmoi update` can change
     `dot_zshrc.tmpl` itself and this shell's already-running zsh process
     won't pick that up otherwise. Deliberately a manually-invoked function,
     not a background cron/launchd job like the

@@ -80,6 +80,10 @@ Several manifests share a convention worth knowing before editing them:
 - `docker-images.txt`: `image[:tag] [platform]` — `platform` is optional, only for single-arch images.
 - `beanstalk-github-migrations.txt`: `<beanstalk clone URL> <github clone URL>` — the beanstalk URL must also have its own active (uncommented) line in `git-repos.txt`, since this manifest only migrates a repo already cloned from there, never clones one itself. Remove a repo's line once its migration is complete.
 
+### Every `winget.exe install --id X` needs a matching upgrade entry
+
+Some Windows-native binaries (`aws-vault.exe`, `aws.exe`, `op.exe`, `starship.exe`) are installed via `winget.exe install --id ...` in `run_once_0015-install-aws-vault.sh.tmpl` and `run_once_0019-configure-powershell-profile.sh.tmpl`, invoked from WSL through interop. These live entirely outside WSL's own package managers, so `update-all`'s `brew`/`apt`/npm/SDKMAN steps never touch them — the only thing that upgrades them is the WSL-only winget loop in `update-all` (`dot_zshrc.tmpl`), which hardcodes the same package IDs. Any script that adds a new `winget.exe install --id X` must add that same `X` to that loop in the same change, or `update-all` will silently never refresh it.
+
 ### The AWS credential/auth chain (`dot_zshrc.tmpl`)
 
 `aws-login <profile>` is the entry point for everything AWS-related in a shell session, and cascades:
