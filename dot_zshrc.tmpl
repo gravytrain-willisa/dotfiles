@@ -551,6 +551,26 @@ update-all() {
   sdk selfupdate && sdk update
 
 {{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+  # Windows-native binaries installed via winget.exe (see
+  # run_once_0015-install-aws-vault.sh.tmpl and
+  # run_once_0019-configure-powershell-profile.sh.tmpl) live outside
+  # WSL's own package managers, so brew/apt above never touch them —
+  # confirmed drifting out of sync in practice (aws-cli 2.36.17 on the
+  # Windows side vs 2.36.40 in WSL). Deliberately scoped to just the IDs
+  # this repo installs, not `winget upgrade --all`, which would also
+  # upgrade unrelated Windows apps the user installed themselves. Keep
+  # this list in sync with the two install scripts above if a new winget
+  # package is ever added there. `winget upgrade --id` exits non-zero
+  # when a package is already current or not installed — `|| true` so
+  # one skip/no-op doesn't stop the rest of update-all.
+  if command -v winget.exe >/dev/null 2>&1; then
+    echo "==> winget upgrade (Windows-side CLIs)" >&2
+    for id in Starship.Starship ByteNess.AWSVault Amazon.AWSCLI AgileBits.1Password.CLI; do
+      winget.exe upgrade --id "$id" -e --silent \
+        --accept-package-agreements --accept-source-agreements || true
+    done
+  fi
+
   update-jrebel
 {{- end }}
 
@@ -671,7 +691,7 @@ Credential/ secret management:
   op-login                          Export 1Password-backed env vars (op-env-vars.txt) into this shell.
 
 Updates/maintenance:
-  update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, npm globals, and the JRebel agent (WSL only).
+  update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, npm globals, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only).
   update-jrebel                     Update just the JRebel agent (WSL only).
   docker-update-images              Re-pull the current tag of every locally present Docker image.
   docker-prune-all                  Prune all docker data except for images (alias for `docker system prune --volumes -f`).

@@ -127,7 +127,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `chezmoi diff` | Preview what `chezmoi apply` would change — renders every template, runs no scripts |
 | `chezmoi apply -v` | Apply for real, printing each script's output |
 | `chezmoi update` | `git pull` the source dir *then* `chezmoi apply` — use this, not plain `apply`, to pick up changes made/pushed since the source dir was last cloned |
-| `update-all` | Update chezmoi, brew/apt, npm globals, SDKMAN metadata, and the JRebel agent (WSL only) in one go (runs `chezmoi update`, so it also pulls) |
+| `update-all` | Update chezmoi, brew/apt, npm globals, SDKMAN metadata, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only) in one go (runs `chezmoi update`, so it also pulls) |
 | `update-jrebel` | Update just the JRebel agent (WSL only), without the rest of `update-all` |
 | `op-login` | Export 1Password-backed env vars (`op-env-vars.txt`) into this shell |
 | `aws-login <profile>` | Export AWS credentials for `<profile>` (12h); also refreshes CodeArtifact + ECR auth |
