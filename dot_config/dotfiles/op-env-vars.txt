@@ -19,3 +19,6 @@ GH_TOKEN op://Private/GitHub PAT/credential
 # Snyk: SNYK_TOKEN is your personal API Token, SNYK_CFG_ORG is the Organisation ID
 SNYK_TOKEN op://Private/Snyk API Key/credential
 SNYK_CFG_ORG op://Private/Snyk API Key/org id
+
+# Advanced Custom Fields Pro
+ACF_PRO_LICENSE_KEY op://GT Digital/ACF Pro Licence Key/credential
