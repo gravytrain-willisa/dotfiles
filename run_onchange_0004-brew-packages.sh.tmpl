@@ -14,7 +14,7 @@ set -euo pipefail
 # idempotent — `brew install` on an installed formula is a fast no-op) on
 # the next apply.
 failures=0
-while read -r pkg; do
+while read -r pkg marker; do
   case "$pkg" in ''|'#'*) continue ;; esac
 {{- if eq .chezmoi.os "linux" }}
   # jetbrains/junie/junie's Homebrew formula has no on_linux branch — its
@@ -28,7 +28,15 @@ while read -r pkg; do
   if ! brew install "$pkg"; then
     echo "brew install $pkg failed — continuing with the rest of the list" >&2
     failures=$((failures + 1))
+    continue
   fi
+{{- if eq .chezmoi.os "darwin" }}
+  # `[force-link]` opts a keg-only formula (see brew-packages.txt's header
+  # comment) into `brew link --force` so its binaries reach PATH.
+  if [ "$marker" = "[force-link]" ]; then
+    brew link --force "$pkg" || echo "brew link --force $pkg failed — its binaries may not be on PATH" >&2
+  fi
+{{- end }}
 done < "$HOME/.config/dotfiles/brew-packages.txt"
 
 if [ "$failures" -gt 0 ]; then

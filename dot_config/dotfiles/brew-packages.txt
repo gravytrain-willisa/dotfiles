@@ -4,6 +4,15 @@
 # Formula from a third-party tap: use `user/tap/formula` (e.g. `llimllib/tap/aver`
 # below), not the plain formula name. `brew install user/tap/formula` auto-taps
 # and updates as needed — no separate `brew tap`/`brew update` line required here.
+#
+# `formula [force-link]`: on macOS, some formulas are keg-only (Homebrew
+# won't symlink them into PATH by default, usually because macOS already
+# ships its own older version of the same tool). Add `[force-link]` after
+# the formula name to run `brew link --force` on it after install. Only
+# opt a formula in if you've confirmed it's actually keg-only and safe to
+# force-link — some formulas (e.g. versioned ones like `openssl@3`) are
+# kept unlinked deliberately to avoid conflicts, and force-linking those
+# could break something rather than just fix a missing PATH entry.
 
 # Modern Bash for interactive/ad-hoc use — macOS still ships 3.2 (2007), frozen
 # at the last GPLv2 release. This does NOT affect this repo's own scripts: they
@@ -13,7 +22,9 @@
 # stay bash 3.2-compatible".
 bash
 
-# CLI tools
+# CLI tools. `bind` provides DNS utilities such as `dig` — keg-only on
+# macOS, so force-link it (see the manifest format note above)
+bind [force-link]
 direnv
 fd
 fzf

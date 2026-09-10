@@ -179,6 +179,16 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    [`run_once_0021-install-junie-linux.sh.tmpl`](../run_once_0021-install-junie-linux.sh.tmpl)
    installs it there instead via JetBrains' own `install.sh`, which does
    real per-OS detection. macOS is unaffected and keeps using the formula.
+
+   **Keg-only formulas (macOS only).** `bind` (installed for `dig`) is
+   keg-only on macOS — Homebrew won't symlink it into `PATH` by default
+   because macOS already ships its own older `dig`/`host`/`nslookup`. It's
+   listed in `brew-packages.txt` as `bind [force-link]`; that optional
+   marker tells `run_onchange_0004-brew-packages.sh.tmpl` to run `brew link
+   --force` on it after install, but only on macOS. It's an opt-in marker
+   rather than something applied to every keg-only formula automatically,
+   since some formulas (e.g. versioned ones like `openssl@3`) are kept
+   unlinked deliberately to avoid conflicts.
 5. **Terminal prompt (starship)** — `starship` (installed via
    `brew-packages.txt`, item 4 above) replaces oh-my-zsh's own theme as the
    prompt, so both macOS and WSL show the exact same prompt from one shared

@@ -139,6 +139,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `gradle-show-dependency-updates` | `./gradlew dependencyUpdates` |
 | `npm-recreate-package-lock` | Recreate `package-lock.json` and `node_modules` from scratch |
 | `cd-projects` | `cd ~/projects` |
+| `cd-chezmoi` | `cd ~/.local/share/chezmoi` (the chezmoi source directory) |
 | `kgm-connect-to-jump-server <stage> <ip>` / `triton-connect-to-jump-server <stage> <ip>` | SSH tunnel to that system's jump box (needs `aws-login` first) |
 | `help` | Show this list from inside the shell, plus your configured direct-server aliases |
 
@@ -157,7 +158,7 @@ than the one you're already editing).
 | To change | Edit |
 |---|---|
 | Shell choice, git identity, GitHub username, AWS region, RDS config, server aliases | [`.chezmoidata/dotfiles.yaml`](.chezmoidata/dotfiles.yaml) |
-| Brew packages (plain formula, or `user/tap/formula` for a third-party tap) | [`dot_config/dotfiles/brew-packages.txt`](dot_config/dotfiles/brew-packages.txt) |
+| Brew packages (plain formula, or `user/tap/formula` for a third-party tap; optional `[force-link]` to force-link a keg-only formula on macOS) | [`dot_config/dotfiles/brew-packages.txt`](dot_config/dotfiles/brew-packages.txt) |
 | SDKMAN candidates (Java/Gradle/Maven) | [`dot_config/dotfiles/sdkman-packages.txt`](dot_config/dotfiles/sdkman-packages.txt) |
 | Node versions | [`dot_config/dotfiles/nvm-versions.txt`](dot_config/dotfiles/nvm-versions.txt) |
 | Global npm packages | [`dot_config/dotfiles/node-globals.txt`](dot_config/dotfiles/node-globals.txt) |
