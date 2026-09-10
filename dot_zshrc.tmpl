@@ -641,6 +641,7 @@ alias npm-recreate-package-lock='echo "{}" > package-lock.json && rm -rf node_mo
 
 # Navigation
 alias cd-projects='cd $HOME/projects'
+alias cd-chezmoi='cd $HOME/.local/share/chezmoi'
 
 # Git maintenance across every repo under ~/projects (where git-repos.txt's
 # clones land, one directory per repo, no nesting) — `*(N/)` is zsh's inline
@@ -705,6 +706,7 @@ npm:
 
 Navigation:
   cd-projects                       cd to ~/projects.
+  cd-chezmoi                        cd to ~/.local/share/chezmoi (the chezmoi source directory).
 
 Git maintenance (every repo under ~/projects):
   git-fetch-all                     git fetch --all --tags --force --prune --prune-tags, in every repo.

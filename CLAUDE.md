@@ -75,6 +75,7 @@ Most provisioning is a plain-text manifest under `dot_config/dotfiles/*.txt` (ne
 **These manifests are additive-only.** Removing a line stops future installs but never uninstalls anything already present — no script here ever runs `*-uninstall`/`brew uninstall`/`docker rmi` on the user's behalf.
 
 Several manifests share a convention worth knowing before editing them:
+- `brew-packages.txt`: `formula [force-link]` — an optional literal `force-link` marker runs `brew link --force` on that formula after install, but only on macOS. Use it only for a formula confirmed keg-only there (e.g. `bind`, for `dig`) — some formulas are kept unlinked deliberately (e.g. versioned ones like `openssl@3`) to avoid conflicts, so don't add this marker blindly to every keg-only formula.
 - `sdkman-packages.txt` / `nvm-versions.txt` / `pyenv-versions.txt`: `<value> [default]` — an optional literal `default` marker picks which installed version wins when more than one is present, rather than relying on install order.
 - `node-globals.txt`: `package [constraint...]`, where a constraint is `>=`/`<=`/`==`/`=`/`>`/`<` immediately followed by a Node **major** version number (no space, no semver ranges) — multiple constraints on one line AND together. No constraint means "install on every Node version in `nvm-versions.txt`."
 - `docker-images.txt`: `image[:tag] [platform]` — `platform` is optional, only for single-arch images.
