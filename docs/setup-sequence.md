@@ -978,6 +978,42 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       on the command line, so the original `alias
       kgm-connect-to-jump-server='connect-to-aws-jump-server.sh kgm ${1}
       ${2}'` would always call the script with two empty arguments.
+    - `bi-copy-jars-to-dev`/`qs-copy-jars-to-dev` — copy freshly built
+      `target/*.jar` and `target/dependency/*.jar` from
+      `~/projects/(bi|qs)-quote-engine` to that system's `*-app-dev` server's
+      `/home/dev-java-engine-user/tomcat/lib`. Both are thin wrappers around a
+      shared `_copy-quote-engine-jars-to-dev` helper (same pattern as
+      `_git_all_projects`), parameterized by project directory name and
+      target host — the host comes from `servers` in
+      `.chezmoidata/dotfiles.yaml` (`bi-app-dev`/`qs-app-dev`), never
+      hardcoded. The `ubuntu` identity used for every server here can't write
+      into `dev-java-engine-user`'s home directory, so rsync itself runs as
+      root on the remote end (`--rsync-path="sudo rsync"`) rather than
+      staging into a scratch dir and moving it into place afterwards — a
+      scratch dir wiped clean on every run gave rsync nothing to diff
+      against, so it re-sent every jar on every run regardless of whether it
+      had changed. Running rsync directly against the real destination lets
+      it skip unchanged files and, via `--delete`, remove jars that are no
+      longer part of the build (safe here since `tomcat/lib` on these servers
+      holds only this app's own jars, never Tomcat's own runtime jars). The
+      local `*.jar` and `dependency/*.jar` globs are symlinked into one local
+      staging dir first, because rsync's `--delete` only prunes extraneous
+      files when syncing a whole directory, not an explicit list of
+      individual files/globs. The rsync (and the underlying ssh connection)
+      uses an SSH `ControlMaster`/`ControlPersist` connection — carried over
+      from when this ran three separate ssh/rsync steps back to back, which
+      was observed to fall through to a password prompt instead of
+      authenticating via the 1Password SSH agent relay each time.
+
+      The rsync itself passes `--no-perms --no-owner --no-group`: with a
+      plain `-a`, running as root (via `sudo rsync`) let it propagate the
+      *local* staging dir's own owner/mode onto the destination directory —
+      `mktemp -d`'s `0700` ended up applied to `tomcat/lib` itself, locked to
+      whatever local user's numeric UID happened to map to on the server,
+      which broke Tomcat's own read access to its lib dir. A `sudo chown -R
+      dev-java-engine-user:dev-java-engine-user` + `chmod` immediately after
+      the rsync restores the ownership/mode every other file under
+      `~/tomcat` already has.
     - Direct server SSH aliases — one `alias <name>='ssh ubuntu@<host>'` per
       entry in `servers` in `.chezmoidata/dotfiles.yaml` (a flat name ->
       hostname map), generated via a `{{ range }}` rather than hardcoded, so
