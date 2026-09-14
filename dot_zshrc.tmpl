@@ -667,6 +667,46 @@ git-cleanup-all() { _git_all_projects git gc --aggressive; }
 kgm-connect-to-jump-server() { connect-to-aws-jump-server.sh kgm "$1" "$2"; }
 triton-connect-to-jump-server() { connect-to-aws-jump-server.sh triton "$1" "$2"; }
 
+# Copy freshly built quote-engine jars to the dev Tomcat lib dir. `ubuntu`
+# (the identity every server in `servers` uses) can't write into
+# dev-java-engine-user's home directory, so rsync itself runs as root on the
+# remote end (--rsync-path="sudo rsync") rather than staging into a scratch
+# dir and moving it into place afterwards — that staging dir was wiped clean
+# on every run, so rsync never had anything to diff against and re-sent every
+# jar every time. Running rsync directly against the real destination lets it
+# skip unchanged files and (--delete) remove jars that are no longer part of
+# the build; tomcat/lib here holds only this app's own jars, never Tomcat's
+# own runtime jars, so a blanket --delete is safe.
+#
+# The local *.jar and dependency/*.jar globs are symlinked into one staging
+# dir first because rsync's --delete only prunes extraneous files when
+# syncing a whole directory, not an explicit list of individual files/globs.
+#
+# --no-perms/--no-owner/--no-group stop rsync (running as root via sudo)
+# from propagating the *local* staging dir's own mode/owner onto the
+# destination — with a plain `-a`, `mktemp -d`'s 0700 staging dir got
+# applied to tomcat/lib itself (locked to whatever local user's numeric UID
+# happened to map to on the server), breaking Tomcat's own read access. The
+# explicit chown/chmod afterwards restores the ownership/mode every other
+# file under ~/tomcat already has.
+_copy-quote-engine-jars-to-dev() {
+  local project="$1" host="$2"
+  local src="$HOME/projects/${project}/target"
+  local dest="/home/dev-java-engine-user/tomcat/lib"
+  local ssh_opts=(-o ControlMaster=auto -o ControlPersist=60 -o "ControlPath=/tmp/ssh-copy-jars-to-dev-%C")
+  local stage jar
+  stage="$(mktemp -d)"
+  for jar in "$src"/*.jar(N) "$src"/dependency/*.jar(N); do
+    ln -sf "$jar" "$stage/$(basename "$jar")"
+  done
+  rsync -vz --recursive --delete --copy-links --no-perms --no-owner --no-group \
+    --rsync-path="sudo rsync" -e "ssh ${ssh_opts[*]}" "$stage/" "ubuntu@${host}:${dest}/" \
+    && ssh "${ssh_opts[@]}" "ubuntu@${host}" "sudo chown -R dev-java-engine-user:dev-java-engine-user '${dest}' && sudo chmod 775 '${dest}' && sudo chmod 664 '${dest}'/*.jar"
+  rm -rf "$stage"
+}
+bi-copy-jars-to-dev() { _copy-quote-engine-jars-to-dev bi-quote-engine "{{ index .servers "bi-app-dev" }}"; }
+qs-copy-jars-to-dev() { _copy-quote-engine-jars-to-dev qs-quote-engine "{{ index .servers "qs-app-dev" }}"; }
+
 # Connect to other servers — hostnames come from `servers` in
 # .chezmoidata/dotfiles.yaml, not hardcoded here (see CLAUDE.md: never
 # hardcode a value that already exists in that YAML). Same identity from the
@@ -715,6 +755,10 @@ Git maintenance (every repo under ~/projects):
 AWS RDS access via jump servers (requires `aws-login <profile>` to be run first):
   kgm-connect-to-jump-server        SSH tunnel to the KGM AWS jump box <stage> <jump-box-ip>.
   triton-connect-to-jump-server     SSH tunnel to the Triton AWS jump box <stage> <jump-box-ip>.
+
+Quote-engine jar deploys:
+  bi-copy-jars-to-dev               rsync bi-quote-engine/target jars to the bi-app-dev Tomcat lib dir.
+  qs-copy-jars-to-dev               rsync qs-quote-engine/target jars to the qs-app-dev Tomcat lib dir.
 
 Direct server connections (ssh ubuntu@<host>, via the 1Password SSH agent):
 EOF

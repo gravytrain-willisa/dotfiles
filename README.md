@@ -141,6 +141,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `cd-projects` | `cd ~/projects` |
 | `cd-chezmoi` | `cd ~/.local/share/chezmoi` (the chezmoi source directory) |
 | `kgm-connect-to-jump-server <stage> <ip>` / `triton-connect-to-jump-server <stage> <ip>` | SSH tunnel to that system's jump box (needs `aws-login` first) |
+| `bi-copy-jars-to-dev` / `qs-copy-jars-to-dev` | rsync `target/*.jar` + `target/dependency/*.jar` from `~/projects/(bi\|qs)-quote-engine` to that system's `*-app-dev` Tomcat lib dir |
 | `help` | Show this list from inside the shell, plus your configured direct-server aliases |
 
 **`apply` renders whatever is already checked out in the source dir
