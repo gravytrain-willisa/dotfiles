@@ -141,7 +141,9 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `cd-projects` | `cd ~/projects` |
 | `cd-chezmoi` | `cd ~/.local/share/chezmoi` (the chezmoi source directory) |
 | `kgm-connect-to-jump-server <stage> <ip>` / `triton-connect-to-jump-server <stage> <ip>` | SSH tunnel to that system's jump box (needs `aws-login` first) |
-| `bi-copy-jars-to-dev` / `qs-copy-jars-to-dev` | rsync `target/*.jar` + `target/dependency/*.jar` from `~/projects/(bi\|qs)-quote-engine` to that system's `*-app-dev` Tomcat lib dir |
+| `bi-dev-copy-qe-jars` / `qs-dev-copy-qe-jars` | rsync `target/*.jar` + `target/dependency/*.jar` from `~/projects/(bi\|qs)-quote-engine` to that system's `*-app-dev` Tomcat lib dir |
+| `bi-dev-copy-qe-properties` / `qs-dev-copy-qe-properties` | rsync `~/projects/sysadmin-tools/tomcat/application-configs/(bedfords\|quotesearcher)-dev` to that system's `*-app-dev` `~/gtconf` |
+| `bi-dev-copy-qe-web` / `qs-dev-copy-qe-web` | rsync `~/projects/(bi\|qs)-quote-engine/src/main/webapp` to that system's `*-app-dev` `~dev-securequotedirect`/`~dev-quotesearcher` `public_html` |
 | `help` | Show this list from inside the shell, plus your configured direct-server aliases |
 
 **`apply` renders whatever is already checked out in the source dir
