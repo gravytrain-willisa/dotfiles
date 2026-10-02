@@ -22,9 +22,9 @@ mysql:8.4
 openapitools/openapi-generator-cli
 public.ecr.aws/amazoncorretto/amazoncorretto:11
 public.ecr.aws/amazoncorretto/amazoncorretto:21
-public.ecr.aws/bitnami/redis:latest linux/amd64
+public.ecr.aws/docker/library/redis:7.0
 public.ecr.aws/nginx/nginx:1.28
-redis:6.2
+redis:7.0
 swaggerapi/swagger-editor
 tomcat:9.0-jdk11-corretto
 wordpress:php8.3
