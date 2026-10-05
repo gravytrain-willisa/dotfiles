@@ -35,6 +35,7 @@ starship
 
 # AWS
 awscli
+aws-sam-cli
 
 # Git (kept more up-to-date than standard install), GitHub CLI & GitHub Actions version check
 git
