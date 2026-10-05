@@ -118,7 +118,8 @@ Chezmoi can't do these for you. Item numbers below refer to
 | Step | Action |
 |---|---|
 | `op-login` API keys | Create 1Password items for Anthropic/OpenAI/Snyk (or whatever you add to `op-env-vars.txt`) (item 18, "Env vars from 1Password") |
-| Git commit signing | Set `git.signing_key` in `.chezmoidata/dotfiles.yaml` to your SSH key's public half (item 23, "Git config") |
+| `ssh-login` key | Add the `op://…/private key` reference of your 1Password SSH Key item (the one matching `git.signing_key_ref`) to [`ssh-keys.txt`](dot_config/dotfiles/ssh-keys.txt), then `ssh-login` (item 15, "1Password SSH agent relay") |
+| Git commit signing | Set `git.signing_key_ref` in `.chezmoidata/dotfiles.yaml` to the `op://…/public key` reference of your SSH Key item; the public key is then fetched automatically (items 23 and 29). Also add it to GitHub as a Signing Key |
 
 ## Common commands
 
@@ -129,8 +130,14 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `chezmoi update` | `git pull` the source dir *then* `chezmoi apply` — use this, not plain `apply`, to pick up changes made/pushed since the source dir was last cloned |
 | `update-all` | Update chezmoi, brew/apt, npm globals, SDKMAN metadata, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only) in one go (runs `chezmoi update`, so it also pulls) |
 | `update-jrebel` | Update just the JRebel agent (WSL only), without the rest of `update-all` |
-| `op-login` | Export 1Password-backed env vars (`op-env-vars.txt`) into this shell |
-| `aws-login <profile>` | Export AWS credentials for `<profile>` (12h); also refreshes CodeArtifact + ECR auth |
+| `op-login [--refresh]` | Export 1Password-backed env vars (`op-env-vars.txt`) into this shell; result is cached across shells for `credential_cache_hours`, `--refresh` re-queries |
+| `aws-login [--refresh] <profile>` | Export AWS credentials for `<profile>` (12h); also refreshes CodeArtifact + ECR auth. Cached across shells for `credential_cache_hours`; `--refresh` re-authorizes |
+| `aws-login-gravytrain` | Alias for `aws-login gravytrain` |
+| `login-all [--refresh]` | `op-login` + `aws-login gravytrain` + `ssh-login` in one command (everything that uses 1Password); `--refresh` bypasses all three caches |
+| `aws-logout` | Clear AWS credentials from this shell and the login cache |
+| `ssh-login [--refresh]` | Load the key(s) in `ssh-keys.txt` into a local ssh-agent for `credential_cache_hours` — no repeated 1Password prompts |
+| `git-signing-key-refresh` | Re-fetch the git signing public key from 1Password (`git.signing_key_ref`) and rebuild `allowed_signers` |
+| `ssh-logout` | Remove the keys from the local ssh-agent (ssh falls back to the 1Password agent) |
 | `docker-update-images` | Re-pull the current tag of every locally present Docker image |
 | `docker-prune-all` | `docker system prune --volumes -f` |
 | `git-fetch-all` | `git fetch --all --tags --force --prune --prune-tags` in every repo under `~/projects` |
@@ -171,6 +178,8 @@ than the one you're already editing).
 | Repos to clone into `~/projects` | [`dot_config/dotfiles/git-repos.txt`](dot_config/dotfiles/git-repos.txt) |
 | Beanstalk → GitHub migration pairs | [`dot_config/dotfiles/beanstalk-github-migrations.txt`](dot_config/dotfiles/beanstalk-github-migrations.txt) |
 | 1Password-sourced env vars | [`dot_config/dotfiles/op-env-vars.txt`](dot_config/dotfiles/op-env-vars.txt) |
+| SSH keys for `ssh-login` | [`dot_config/dotfiles/ssh-keys.txt`](dot_config/dotfiles/ssh-keys.txt) |
+| How long `op-login`/`aws-login`/`ssh-login` results are kept | `credential_cache_hours` in [`.chezmoidata/dotfiles.yaml`](.chezmoidata/dotfiles.yaml), then `chezmoi apply` and open a new shell (one-off: `export DOTFILES_CACHE_TTL=<seconds>` before the shell starts) |
 | Shell aliases/functions | [`dot_zshrc.tmpl`](dot_zshrc.tmpl) — keep `help`'s static list in sync (see [CLAUDE.md](CLAUDE.md)) |
 | Git config | [`dot_gitconfig.tmpl`](dot_gitconfig.tmpl) |
 | SSH config | [`private_dot_ssh/config.tmpl`](private_dot_ssh/config.tmpl) |
@@ -245,11 +254,33 @@ account list --format=json` — use `account_uuid` from the JSON, not the
 terminal. See `docs/setup-sequence.md` item 17, "aws-vault".
 
 **1Password prompts on every single `aws-vault`/`op-login` call** — expected;
-each is a fresh process with its own fresh authorization. `aws-login`/
-`op-login` batch what they can into one prompt per shell session, but
-there's no 1Password setting to suppress this further for third-party
-integrations — see `docs/setup-sequence.md` items 17-18 ("aws-vault", "Env
-vars from 1Password").
+each is a fresh process with its own fresh authorization, and there's no
+1Password setting to suppress this for third-party integrations. So
+`op-login`/`aws-login` batch what they can into one prompt, and cache the
+result for `credential_cache_hours` (default 4h) so new shells reuse it with
+no prompt at all — see `docs/setup-sequence.md` items 17-18 ("aws-vault",
+"Env vars from 1Password").
+
+**`invalid secret reference` from `op read`/`ssh-login`/`git-signing-key-refresh`**
+— `op://vault/item/field` references only allow letters, digits, spaces and
+`- _ .` in names, and there's no escape syntax: an item titled `Foo (SSH)`
+can't be referenced by name. Either rename the item in 1Password, or use its
+ID in place of the title — find it with:
+```bash
+op item list --vault Private --categories "SSH Key"   # ID column; op.exe on WSL
+op item get "Foo (SSH)" --vault Private --fields id   # or by exact title
+```
+then `op://Private/<id>/public key`. Applies to `ssh-keys.txt`,
+`git.signing_key_ref` and `op-env-vars.txt` alike.
+
+**1Password prompts on every `ssh`/`git` call (WSL)** — the socat/npiperelay
+relay makes 1Password see each connection as a different app, so its
+"remember approval" setting never applies. Run `ssh-login` once: it loads
+the key(s) from `ssh-keys.txt` into a local ssh-agent for
+`credential_cache_hours`, which ssh/git then prefer over the 1Password agent
+(falling back to it automatically when the keys expire). Trade-off: the
+unencrypted key sits in that agent's memory for the window. See
+`docs/setup-sequence.md` item 15.
 
 **PowerShell says "running scripts is disabled on this system"** — the
 profile that adds the starship prompt is blocked by the default execution
@@ -481,6 +512,7 @@ Shared config / data
   .chezmoitemplates/ssh-agent-sock.sh.tmpl shared 1Password-agent/relay snippet
   .chezmoitemplates/sudo-timeout-backstop.sh.tmpl shared sudo-cleanup-backstop snippet
   .chezmoitemplates/jrebel-install.sh.tmpl shared JRebel agent download/extract snippet
+  .chezmoitemplates/git-signing-key.sh.tmpl shared git signing public-key fetch snippet
 
 Package manifests (editable, additive-only — see "How to customize")
   dot_config/dotfiles/brew-packages.txt
@@ -493,11 +525,11 @@ Package manifests (editable, additive-only — see "How to customize")
   dot_config/dotfiles/git-repos.txt
   dot_config/dotfiles/beanstalk-github-migrations.txt
   dot_config/dotfiles/op-env-vars.txt
+  dot_config/dotfiles/ssh-keys.txt
 
 Shell/profile templates -> target files
   dot_zshrc.tmpl                        -> ~/.zshrc
   dot_gitconfig.tmpl                    -> ~/.gitconfig
-  dot_config/git/allowed_signers.tmpl   -> ~/.config/git/allowed_signers
   dot_aws/config.tmpl                   -> ~/.aws/config
   private_dot_ssh/config.tmpl           -> ~/.ssh/config (dir mode 0700)
   dot_config/systemd/user/ssh-agent-relay.service -> ~/.config/systemd/user/ssh-agent-relay.service (WSL only)
@@ -534,6 +566,7 @@ Install scripts, in execution order (see docs/setup-sequence.md)
   run_once_after_0022-remove-sudo-timeout.sh.tmpl       (Linux only, runs last)
   run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl (WSL only)
   run_once_0024-install-jrebel-agent.sh.tmpl            (WSL only)
+  run_onchange_0025-fetch-git-signing-key.sh.tmpl       (needs 1Password CLI; warns, doesn't fail, if unavailable)
 ```
 
 ## WSL2 disk space management (Windows side, manual)

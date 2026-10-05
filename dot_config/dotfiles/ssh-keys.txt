@@ -1,0 +1,16 @@
+# SSH private keys to load into a local ssh-agent with `ssh-login`, one
+# 1Password secret reference per line: `op://vault/item/private key`. Blank
+# lines and lines starting with # are ignored. Keys are held in the agent for
+# `credential_cache_hours` (.chezmoidata/dotfiles.yaml), then dropped; until
+# then ssh/git use the local agent instead of the 1Password one, which on WSL
+# re-prompts for every connection (see README, "SSH keys without repeated
+# 1Password prompts").
+#
+# Must include the key whose public half `git.signing_key_ref` in
+# .chezmoidata/dotfiles.yaml points at, or commit signing falls back to the
+# 1Password agent. The item must be an SSH Key item in 1Password; this file
+# only maps a reference, it doesn't create anything. References only allow
+# letters, digits, spaces and - _ . in names — an item titled e.g. "Foo (SSH)"
+# fails with "invalid secret reference"; use its ID instead (README, "1Password
+# references with special characters").
+op://Private/Andrew Willis - SSH/private key

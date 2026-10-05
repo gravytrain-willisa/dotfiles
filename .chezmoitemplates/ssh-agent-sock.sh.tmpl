@@ -55,5 +55,20 @@ fi
 # needs the same "Use the SSH Agent" toggle switched on.
 export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
 {{- end }}
+{{- if or (and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower))) (eq .chezmoi.os "darwin") }}
+# Prefer the local ssh-agent that `ssh-login` (dot_zshrc.tmpl) loads keys
+# into, whenever it's up and actually holds one: the 1Password agent above
+# re-prompts for every connection on WSL (the relay makes each look like a
+# new app), which a long-lived local agent avoids. Once its keys expire
+# (ssh-add -t) or it's gone, this simply leaves the 1Password socket in
+# place. The 1Password path is remembered for dot_zshrc.tmpl's
+# _ssh_select_agent prompt hook, which flips between the two in an
+# already-running shell. POSIX sh only — this also runs in the macOS
+# bash 3.2 run_* scripts and the git wrappers.
+DOTFILES_1P_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
+if SSH_AUTH_SOCK="$HOME/.ssh/local-agent.sock" ssh-add -l >/dev/null 2>&1; then
+  export SSH_AUTH_SOCK="$HOME/.ssh/local-agent.sock"
+fi
+{{- end }}
 {{- /* Bare-metal (non-WSL) Linux: no relay applies, so SSH_AUTH_SOCK is
        left untouched — whatever local agent (if any) is already running. */}}

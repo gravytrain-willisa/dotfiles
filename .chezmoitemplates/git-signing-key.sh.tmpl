@@ -1,0 +1,56 @@
+{{/* Reusable snippet: defines `git-signing-key-refresh`, which fetches the
+     public key named by git.signing_key_ref (a 1Password `op://` reference,
+     see .chezmoidata/dotfiles.yaml) into ~/.config/git/signing_key.pub and
+     regenerates ~/.config/git/allowed_signers from it. Included via
+     {{ template "git-signing-key.sh.tmpl" . }} by both
+     run_onchange_0025-fetch-git-signing-key.sh.tmpl (apply time) and
+     dot_zshrc.tmpl (the interactive command, and ssh-login's fallback) —
+     one copy of the fetch logic for both. bash 3.2-safe: runs under macOS's
+     /bin/bash in the script.
+
+     The public key isn't a secret, which is why it can live in plain files
+     instead of being read from 1Password on every render: chezmoi's
+     `onepasswordRead` would prompt on every `chezmoi diff`/`apply`, need
+     `op` on chezmoi's own PATH (WSL only has the op.exe wrapper), and fail
+     the whole .gitconfig render whenever 1Password is locked.
+
+     allowed_signers lists the keys trusted to sign, so git can *verify* SSH
+     signatures locally. Signing works without it — what's missing is trust:
+     with no allowed signers a valid signature comes back as `%G?` = U (good
+     but untrusted) and `git verify-commit` exits non-zero. With the key
+     listed, `%G?` = G and verify-commit passes. GitHub-side verification is
+     separate and unaffected (that comes from the key added to the account
+     as a Signing Key). Careful reading `git log --show-signature` alone: it
+     prints "Good signature" whether or not the key is trusted — only the
+     principal name is dropped; `git verify-commit`/`%G?` are the real
+     signals. The principal is matched by key, not by email, so it doesn't
+     have to equal the commit's author; keeping it equal to git.email just
+     makes the reported identity meaningful. namespaces="git" scopes the key
+     to git signatures — the same SSH key is also usable for `ssh-keygen -Y
+     sign` in other namespaces, and nothing needs vouching for it beyond
+     that. */ -}}
+{{- if .git.signing_key_ref }}
+git-signing-key-refresh() {
+  local dir="$HOME/.config/git" op_bin=op key tmp
+  command -v op.exe >/dev/null 2>&1 && op_bin=op.exe
+  mkdir -p "$HOME/.cache"
+  # CRLF stripped: op.exe is a Windows binary and ends its output with \r\n.
+  key="$("$op_bin" read "{{ .git.signing_key_ref }}" 2>"$HOME/.cache/git-signing-key.err" | tr -d '\r')"
+  case "$key" in
+  ssh-*|ecdsa-*|sk-*) ;;
+  *)
+    echo "git-signing-key-refresh: could not read a public key from {{ .git.signing_key_ref }}" >&2
+    tr -d '\r' <"$HOME/.cache/git-signing-key.err" >&2
+    echo "  (is 1Password unlocked with CLI integration on, and is the reference right? Retry: git-signing-key-refresh)" >&2
+    return 1
+    ;;
+  esac
+  mkdir -p "$dir"
+  # Temp file + mv, so a failed run never leaves a truncated key behind.
+  tmp="$(mktemp "$dir/.signing_key.XXXXXX")" || return 1
+  printf '%s\n' "$key" >"$tmp" && chmod 644 "$tmp" && mv "$tmp" "$dir/signing_key.pub" || { rm -f "$tmp"; return 1; }
+  tmp="$(mktemp "$dir/.allowed_signers.XXXXXX")" || return 1
+  printf '%s namespaces="git" %s\n' "{{ .git.email }}" "$key" >"$tmp" && chmod 644 "$tmp" && mv "$tmp" "$dir/allowed_signers" || { rm -f "$tmp"; return 1; }
+  echo "git-signing-key-refresh: wrote $dir/signing_key.pub and $dir/allowed_signers" >&2
+}
+{{- end }}

@@ -9,18 +9,22 @@
 [user]
   name = {{ .git.name }}
   email = {{ .git.email }}
-{{- if .git.signing_key }}
-  signingkey = {{ .git.signing_key }}
+{{- if .git.signing_key_ref }}
+  signingkey = {{ .chezmoi.homeDir }}/.config/git/signing_key.pub
 {{- end }}
-{{- if .git.signing_key }}
+{{- if .git.signing_key_ref }}
 
 # Commit signing reuses the same SSH key already sitting in the 1Password
 # agent (SSH_AUTH_SOCK, see dot_zshrc.tmpl) rather than a separate signing
 # key — GitHub lets one key be added twice, once as an "Authentication Key"
 # and once as a "Signing Key" (Settings -> SSH and GPG keys), so this needs
-# no new key generation/rotation of its own. `git.signing_key` in
-# .chezmoidata/dotfiles.yaml is the *public* key line — not a secret, safe
-# to have in this repo, same as any ~/.ssh/id_*.pub would be.
+# no new key generation/rotation of its own. `git.signing_key_ref` in
+# .chezmoidata/dotfiles.yaml is the 1Password reference to the item's
+# *public key* field; ~/.config/git/signing_key.pub (what `signingkey`
+# above points at — git accepts a public-key file and picks the matching
+# private key from the agent) is fetched from it by
+# run_onchange_0025-fetch-git-signing-key.sh.tmpl, see
+# .chezmoitemplates/git-signing-key.sh.tmpl.
 [gpg]
   format = ssh
 [gpg "ssh"]
