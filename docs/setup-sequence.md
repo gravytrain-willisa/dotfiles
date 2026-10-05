@@ -285,7 +285,10 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    version is currently active.
 8. **nvm** — installed via the official install script, skipped if an `nvm`
    brew formula is already present. Which Node versions get installed is a
-   separate, manifest-driven step (next).
+   separate, manifest-driven step (next). `dot_zshrc.tmpl` also installs a
+   `chpwd` hook (`_nvm_auto_use`) that switches Node on `cd` based on the
+   nearest `.nvmrc` — nvm's equivalent of `sdkman_auto_env` — installing the
+   version if missing and reverting to nvm's default on leaving the project.
 9. **Node versions** — installed from
    [`dot_config/dotfiles/nvm-versions.txt`](../dot_config/dotfiles/nvm-versions.txt)
    (ships with Node 24 — pinned as the default via the `default` marker,

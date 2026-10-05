@@ -55,6 +55,28 @@ fi
 [ -s "$NVM_SH" ] && \. "$NVM_SH"
 [ -s "$NVM_COMPLETION" ] && \. "$NVM_COMPLETION"
 
+# Auto-switch Node version on cd via .nvmrc, like sdkman_auto_env does for
+# SDKMAN. nvm has no built-in equivalent, so this is a chpwd hook.
+if command -v nvm >/dev/null 2>&1; then
+  autoload -U add-zsh-hook
+  _nvm_auto_use() {
+    local nvmrc_path wanted
+    nvmrc_path="$(nvm_find_nvmrc)"
+    if [ -n "$nvmrc_path" ]; then
+      wanted="$(nvm version "$(cat "$nvmrc_path")")"
+      if [ "$wanted" = "N/A" ]; then
+        nvm install                    # .nvmrc names a version we don't have yet
+      elif [ "$wanted" != "$(nvm version)" ]; then
+        nvm use >/dev/null
+      fi
+    elif [ -n "$(PWD=$OLDPWD nvm_find_nvmrc)" ] && [ "$(nvm version)" != "$(nvm version default)" ]; then
+      nvm use default >/dev/null       # left a .nvmrc project, back to the default
+    fi
+  }
+  add-zsh-hook chpwd _nvm_auto_use
+  _nvm_auto_use                        # also apply to the directory the shell opens in
+fi
+
 # pyenv
 # PYENV_ROOT stays at ~/.pyenv unconditionally — `brew --prefix pyenv` is the
 # Cellar/opt path for the pyenv *binary*, not a pyenv root; pointing
