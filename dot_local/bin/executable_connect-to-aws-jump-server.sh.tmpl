@@ -5,7 +5,9 @@
 # Opens an SSH tunnel through the Gravytrain jump box to a given system's
 # RDS cluster for a given stage, so a local MySQL client pointed at
 # 127.0.0.1:3306 talks to that stage's database. The jump box has no fixed
-# IP (it's started on demand), so it's passed as an argument each time.
+# IP (it's started on demand), so it's passed as an argument each time. The
+# stage's ElastiCache Redis (if configured in `redis.systems`) is tunnelled
+# over the same connection to 127.0.0.1:6379.
 #
 # The RDS cluster endpoint is looked up from AWS at connect time rather than
 # hardcoded: each stage's cluster identifier
@@ -72,5 +74,38 @@ fi
 CLUSTER_ID="$(printf '%s' "$matches" | cut -f1)"
 ENDPOINT="$(printf '%s' "$matches" | cut -f2)"
 
+TUNNELS=(-L 127.0.0.1:3306:"${ENDPOINT}":3306)
+
+# Redis (ElastiCache) is tunnelled too when the system has a prefix in
+# `redis.systems` and a matching replication group exists. Anything else is a
+# warning, not an error — the database tunnel still comes up.
+REDIS_PREFIX_BASE=""
+case "$SYSTEM" in
+{{- range $system, $prefix := .redis.systems }}
+  {{ $system }}) REDIS_PREFIX_BASE="{{ $prefix }}" ;;
+{{- end }}
+esac
+
+if [ -n "$REDIS_PREFIX_BASE" ]; then
+  REDIS_PREFIX="${STAGE}-${REDIS_PREFIX_BASE}"
+  # These are standalone cache clusters (no replication group), so they only
+  # appear in describe-cache-clusters, with the endpoint on the first node.
+  redis_matches="$(aws elasticache describe-cache-clusters --region "$REGION" --show-cache-node-info \
+    --query "CacheClusters[?starts_with(CacheClusterId, '${REDIS_PREFIX}')].[CacheClusterId,CacheNodes[0].Endpoint.Address]" \
+    --output text || true)"
+
+  if [ -z "$redis_matches" ]; then
+    echo "Warning: no ElastiCache cluster matching '${REDIS_PREFIX}*' in ${REGION} — skipping Redis tunnel" >&2
+  elif [ "$(printf '%s\n' "$redis_matches" | wc -l)" -gt 1 ]; then
+    echo "Warning: multiple ElastiCache clusters matched '${REDIS_PREFIX}*' — skipping Redis tunnel:" >&2
+    printf '%s\n' "$redis_matches" >&2
+  else
+    REDIS_ID="$(printf '%s' "$redis_matches" | cut -f1)"
+    REDIS_ENDPOINT="$(printf '%s' "$redis_matches" | cut -f2)"
+    echo "Also tunnelling Redis ${REDIS_ID} (${REDIS_ENDPOINT}) to 127.0.0.1:6379"
+    TUNNELS+=(-L 127.0.0.1:6379:"${REDIS_ENDPOINT}":6379)
+  fi
+fi
+
 echo "Connecting to ${CLUSTER_ID} (${ENDPOINT}) via jump box ${JUMP_IP}..."
-ssh -o StrictHostKeyChecking=accept-new -N -L 127.0.0.1:3306:"${ENDPOINT}":3306 {{ .rds.jump_user }}@"${JUMP_IP}"
+ssh -o StrictHostKeyChecking=accept-new -N "${TUNNELS[@]}" {{ .rds.jump_user }}@"${JUMP_IP}"
