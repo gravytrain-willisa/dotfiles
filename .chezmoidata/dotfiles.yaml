@@ -57,12 +57,25 @@ rds:
   # Stable prefix shared by every stage's cluster identifier for each
   # system — each stage prepends its own name (dev-/staging-/prod-) and RDS
   # appends an opaque generated suffix, e.g.
-  # prod-gt-triton-core-database-coredatabasecluster-0ee0jjp507zm.
+  # prod-gt-triton-core-database-coredatabasecluster-0ee0jjp507zm. The name
+  # is truncated to a stage-dependent length (staging-gt-triton-core-databa-…,
+  # prod-kgm-broker-centre-databa-…), so each prefix is the shortest form
+  # that all three stages share.
   systems:
-    kgm: kgm-broker-centre-databas
-    triton: gt-triton-core-database
+    kgm: kgm-broker-centre-dat
+    triton: gt-triton-core-databa
   # SSH user the jump box expects, used by connect-to-aws-jump-server.sh.tmpl.
   jump_user: gtjump
+
+# ElastiCache (Redis) standalone cache clusters, tunnelled alongside the RDS cluster
+# by connect-to-aws-jump-server.sh.tmpl (local 127.0.0.1:6379). Same idea as
+# `rds.systems`: the stable prefix of the cache cluster ID after the
+# "<stage>-" part. A system with no entry here (or no matching group at
+# connect time) just gets the database tunnel, with a warning.
+redis:
+  systems:
+    kgm: kgm-broker-centre-session-cache
+    triton: leads-data-store
 
 # Direct (non-jump-box) servers — keyed by the alias name dot_zshrc.tmpl
 # generates for each (`alias <key>='ssh ubuntu@<value>'`). All reachable as

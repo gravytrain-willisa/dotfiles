@@ -53,3 +53,6 @@ jetbrains/junie/junie
 php
 composer
 wp-cli
+
+# Redis
+redis

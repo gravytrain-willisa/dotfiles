@@ -931,6 +931,13 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     script checks for these and exits with a clear message rather than a raw
     AWS SDK error if they're missing.
 
+    The same SSH connection also forwards Redis (`127.0.0.1:6379`) to the
+    stage's standalone ElastiCache cluster, found the same way via `aws
+    elasticache describe-cache-clusters` and a `<stage>-<prefix>` match,
+    with the prefix per system in `redis.systems` in
+    `.chezmoidata/dotfiles.yaml`. A system with no prefix, or no/ambiguous
+    match, only produces a warning — the database tunnel still comes up.
+
     `~/.local/bin` (where this and other chezmoi-managed scripts live) is
     not on `PATH` by default in a non-login zsh shell — that's a
     `.profile`/POSIX-sh convention, and zsh doesn't source `.profile` —
