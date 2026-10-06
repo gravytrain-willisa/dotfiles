@@ -450,6 +450,28 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     invocation generally). This service is still worth having for other
     tools that inherit environment normally, but the fix that actually
     solves IDE-launched git is `core.sshCommand`, covered in step 23 below.
+    **Repeated prompts, and the local-agent workaround.** Because the relay
+    makes 1Password treat each connection as a different application, its
+    "remember approval" setting never applies and every `ssh`/`git` call
+    prompts. `ssh-login` (in `dot_zshrc.tmpl`) works around it: it starts a
+    plain `ssh-agent` on `~/.ssh/local-agent.sock` and, for each
+    `op://…/private key` reference in
+    [`dot_config/dotfiles/ssh-keys.txt`](../dot_config/dotfiles/ssh-keys.txt),
+    pipes `op read "<ref>?ssh-format=openssh"` into `ssh-add -t
+    <DOTFILES_CACHE_TTL> -` — one prompt per key, the key never touches disk,
+    and the agent drops it by itself on expiry. The key must be the one
+    matching `git.signing_key_ref` (item 23) or commit signing keeps using
+    1Password. The tail of `.chezmoitemplates/ssh-agent-sock.sh.tmpl` (so
+    the zshrc, both git wrappers and `run_onchange_0018` all get it) then
+    points `SSH_AUTH_SOCK` at the local agent whenever it holds a key, and
+    otherwise leaves the 1Password socket; a `precmd` hook
+    (`_ssh_select_agent`) re-checks before each prompt so open shells switch
+    over after an `ssh-login`, and back after expiry. `ssh-logout` drops the
+    keys. Accepted trade-off: an unencrypted key is readable through the
+    local socket by any process of the same user for the window, weaker than
+    1Password's per-use approval. Not applied on bare-metal Linux, where
+    the repo doesn't manage the agent.
+
 16. **`~/.ssh/config`** —
     [`private_dot_ssh/config.tmpl`](../private_dot_ssh/config.tmpl) →
     `~/.ssh/config` (the `private_` prefix keeps the `~/.ssh` directory
@@ -840,6 +862,35 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     prompt per entry instead of one shared prompt, since that's now N
     separate `op(.exe)` processes.
 
+    **Cached across shells.** Every new terminal tab is a new shell, and a
+    1Password prompt per tab gets old fast. So a fully successful `op-login`
+    writes the `export` lines it just ran to `~/.cache/op-env-cache`
+    (mode `0600`), and `aws-login` (item 17) writes the credentials it
+    exported, plus `AWS_ACCOUNT_ID` and the profile name, to
+    `~/.cache/aws-login-cache`. Every new shell re-loads whichever cache is
+    younger than `DOTFILES_CACHE_TTL` (from `credential_cache_hours` in
+    `.chezmoidata/dotfiles.yaml`, default 4h; a `DOTFILES_CACHE_TTL` already
+    in the environment wins, and it should stay <= 12h, the lifetime of the
+    AWS credentials) and deletes stale ones — no `op`/`aws-vault` call, so
+    no prompt. `op-login`/`aws-login <profile>` themselves reuse a fresh
+    cache too (`aws-login` only for the *same* profile; `op-login` ignores
+    a cache older than `op-env-vars.txt`, so a newly added line is
+    resolved); `--refresh`/`-f` forces a real login, and `aws-logout`
+    clears the AWS side. A partially failed `op-login` fallback is not
+    cached, so the next run retries whatever failed. The values are
+    plaintext on disk for the window, but they're already plaintext in
+    `env`. CodeArtifact tokens already had their own 12h file cache
+    (`~/.cache/codeartifact-token-<profile>-<domain>`); new shells now also
+    export those straight into their env vars at startup, so npm works
+    without an `aws-login`.
+
+    **Blank defaults.** Every variable named in `op-env-vars.txt`, and every
+    CodeArtifact token variable from `.codeartifact`, is exported *empty* if
+    it's otherwise unset (never overwriting a real value). Tools that expand
+    them unconditionally — npm's `${CODEARTIFACT_AUTH_TOKEN}` placeholder in
+    `.npmrc` — then no longer fail in projects that never needed the
+    credential. The reminder below still fires for blank values.
+
     **Forgetting to run it.** Neither `op-login` nor `aws-login` (item 17)
     auto-run at shell startup — both can trigger a 1Password unlock prompt,
     and `aws-login` additionally cascades into `codeartifact_auth`/
@@ -954,6 +1005,16 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       `:latest` that don't otherwise get refreshed automatically.
     - `docker-prune-all` — `docker system prune --volumes -f`, reclaims
       disk space from stopped containers/dangling images/unused volumes.
+    - `aws-login-gravytrain` — plain alias for `aws-login gravytrain` (item 17),
+      the profile used day to day.
+    - `login-all [--refresh]` — runs `op-login`, `aws-login gravytrain` and
+      `ssh-login` back to back (items 15, 17, 18): a **function**, so one
+      failing doesn't skip the rest and `--refresh` reaches all three.
+      Each still uses its own cache while fresh, so on a normal day it
+      prompts for nothing. They remain separate `op`/`aws-vault` processes,
+      so a cold start can prompt per process rather than once — `op-login`
+      already batches its whole manifest into one `op inject`, which is as
+      far as batching goes. Any new 1Password-backed login belongs in it.
     - `gradle-refresh-dependencies` — `./gradlew --refresh-dependencies
       clean build`, skipping `test` always. This is a **function, not a
       plain alias**, because `checkstyle*`/`spotbugs*` tasks should only be
@@ -1111,31 +1172,35 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     per-context identity switching yet — see "Notes" in the README for why
     that's deferred rather than guessed at.
 
-    **Commit signing (optional)** — set `git.signing_key` in
-    `.chezmoidata/dotfiles.yaml` to your SSH key's *public* half (safe to
-    commit — it's not a secret) and `dot_gitconfig.tmpl` adds
-    `[gpg] format = ssh` + `[commit] gpgsign = true`, signing every commit
-    with the same key already sitting in the 1Password agent — no separate
-    signing key to generate or rotate. One-time setup:
-    1. Get the public key from whichever 1Password SSH Key item you already
-       use for git auth: `op item get "<item name>" --fields "public key"`
-       (or open the item in the 1Password app and copy it).
-    2. Paste it into `git.signing_key`, then `chezmoi apply`.
-    3. In GitHub → Settings → SSH and GPG keys → **New SSH key**, paste the
-       same public key again, but set **Key type: Signing Key** (GitHub
-       treats auth and signing as separate key slots — the same key can
-       fill both).
+    **Commit signing (optional)** — set `git.signing_key_ref` in
+    `.chezmoidata/dotfiles.yaml` to the 1Password reference of your SSH
+    Key item's *public key* field (`op://<vault>/<item>/public key`) and
+    `dot_gitconfig.tmpl` adds `[gpg] format = ssh` + `[commit] gpgsign =
+    true`, signing every commit with the same key already in the agent — no
+    separate signing key to generate or rotate, and no public key pasted
+    into this repo. `signingkey` points at `~/.config/git/signing_key.pub`
+    (git accepts a public-key file and picks the matching private key out of
+    the agent), which step 29 fetches from 1Password. One-time setup:
+    1. Set `git.signing_key_ref` (same item as the `private key` line in
+       `ssh-keys.txt`, item 15), then `chezmoi apply`. Item titles can only contain
+       letters, digits, spaces and `- _ .` in an `op://` reference (no escape
+       syntax exists); for anything else rename the item or use its ID
+       instead, from `op item list --vault <vault> --categories "SSH Key"` —
+       see the README's "invalid secret reference" troubleshooting entry.
+    2. In GitHub → Settings → SSH and GPG keys → **New SSH key**, paste the
+       public key (`cat ~/.config/git/signing_key.pub`) again, but set **Key
+       type: Signing Key** (GitHub treats auth and signing as separate key
+       slots — the same key can fill both).
 
-    Left blank by default; `dot_gitconfig.tmpl` only adds the signing
-    config once `git.signing_key` is set, so leaving it empty is a no-op,
-    not a broken state.
+    Left blank, `dot_gitconfig.tmpl` adds no signing config, so that's a
+    no-op, not a broken state.
 
     Verify the key is actually reachable through the agent *before* the
     apply that turns this on — `gpgsign = true` applies to every repo on the
     machine, so if the agent can't produce that key, every commit fails
     rather than just going unsigned:
     ```bash
-    ssh-add -l   # the listed fingerprint must match git.signing_key's
+    ssh-add -l   # the listed fingerprint must match signing_key.pub's (ssh-keygen -lf ~/.config/git/signing_key.pub)
     ```
 
     **`gpg.ssh.program`** points at
@@ -1157,16 +1222,12 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     ```
 
     Signing and verifying are separate halves, and the config above only
-    does the first.
-    [`dot_config/git/allowed_signers.tmpl`](../dot_config/git/allowed_signers.tmpl)
-    → `~/.config/git/allowed_signers` supplies the second, pairing
-    `git.email` with `git.signing_key` (both read from
-    `.chezmoidata/dotfiles.yaml`, so there's no third copy to keep in sync)
-    and scoping it with `namespaces="git"` so the key is only vouched for as
-    a git signer. `dot_gitconfig.tmpl` points `gpg.ssh.allowedSignersFile`
-    at it, gated on the same `git.signing_key` condition — when signing is
-    off the template renders empty and chezmoi omits the file entirely
-    rather than leaving a stray one behind.
+    does the first. `~/.config/git/allowed_signers` supplies the second,
+    pairing `git.email` with the fetched public key and scoping it with
+    `namespaces="git"` so the key is only vouched for as a git signer; it's
+    written next to `signing_key.pub` by step 29 (no longer a chezmoi-managed
+    template), and `dot_gitconfig.tmpl` points `gpg.ssh.allowedSignersFile`
+    at it.
 
     What that actually changes is **trust**, not whether signing happened:
 
@@ -1429,7 +1490,27 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     `JAVA_TOOL_OPTIONS` with `-agentpath:$JREBEL_HOME/lib/libjrebel64.so` plus
     project- and user-specific `-Drebel.*` system properties, none of which
     chezmoi can template (two of the four values are inherently
-    per-person/per-project).
+    per-person/per-project).29. **Git signing public key (from 1Password)** —
+    [`run_onchange_0025-fetch-git-signing-key.sh.tmpl`](../run_onchange_0025-fetch-git-signing-key.sh.tmpl)
+    runs `op read "<git.signing_key_ref>"` (`op.exe` on WSL) and writes
+    `~/.config/git/signing_key.pub` plus `~/.config/git/allowed_signers`
+    (item 23). The logic is the `git-signing-key-refresh` function in
+    [`.chezmoitemplates/git-signing-key.sh.tmpl`](../.chezmoitemplates/git-signing-key.sh.tmpl),
+    shared with `dot_zshrc.tmpl` so it's also an interactive command. Why a
+    file fetched at apply time instead of chezmoi's `onepasswordRead` in the
+    template: that would prompt 1Password on every `chezmoi diff`/`apply`,
+    needs `op` on chezmoi's own PATH (WSL only has the `op.exe` wrapper
+    function), and a locked 1Password would fail the whole `.gitconfig`
+    render. The key is public, so a plain file is fine. Files are written
+    via temp file + `mv`, so a failed fetch never leaves a truncated key. It
+    re-runs when `git.signing_key_ref` changes (hash comment), and a failure
+    only warns and exits 0 — on a fresh machine 1Password's CLI integration
+    usually isn't enabled yet, and that mustn't abort the apply. Until the
+    key file exists, commits fail to sign (`gpgsign = true`); run
+    `git-signing-key-refresh` once 1Password is ready, or just `ssh-login`,
+    which fetches it when the file is missing. Rotate the key by running
+    `git-signing-key-refresh` again.
+
 ## Manifest conventions
 
 Each numbered manifest (`*.txt`) is a plain newline-delimited list — blank

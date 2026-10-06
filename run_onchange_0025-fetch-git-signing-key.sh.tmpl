@@ -1,0 +1,19 @@
+{{- if .git.signing_key_ref -}}
+#!/bin/bash
+# hash: {{ .git.signing_key_ref | sha256sum }}
+# Fetches the git commit-signing public key from 1Password into
+# ~/.config/git/signing_key.pub (and regenerates allowed_signers) — see
+# .chezmoitemplates/git-signing-key.sh.tmpl for what and why. Re-runs
+# whenever git.signing_key_ref changes.
+#
+# A failure here only warns and exits 0: on a fresh machine 1Password's CLI
+# integration usually isn't enabled yet, and that must not abort the whole
+# apply. Until the key file exists, commits fail to sign (gpgsign = true) —
+# run `git-signing-key-refresh` (or `ssh-login`) once 1Password is ready.
+{{ template "git-signing-key.sh.tmpl" . }}
+
+if ! git-signing-key-refresh; then
+  echo "Commit signing will not work until the key is fetched: enable 1Password's CLI integration, then run 'git-signing-key-refresh'." >&2
+fi
+exit 0
+{{- end }}
