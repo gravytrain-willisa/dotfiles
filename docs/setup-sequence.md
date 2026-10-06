@@ -1039,6 +1039,11 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       one doesn't abort the rest or leave the calling shell's `cwd` changed.
       An empty or missing `~/projects` is a silent no-op rather than an
       error.
+    - `delete-zone-identifiers` — WSL only (rendered only when the kernel
+      release contains `microsoft`). Windows leaves a
+      `<file>:Zone.Identifier` sidecar (mark-of-the-web) next to files
+      copied into WSL; this recursively deletes them from the current
+      directory, printing each one removed.
     - `kgm-connect-to-jump-server`/`triton-connect-to-jump-server` — thin
       wrappers around item 21's `connect-to-aws-jump-server.sh` that fix the
       `<system>` argument (`kgm`/`triton` respectively), taking
