@@ -933,6 +933,13 @@ alias npm-recreate-package-lock='echo "{}" > package-lock.json && rm -rf node_mo
 alias cd-projects='cd $HOME/projects'
 alias cd-chezmoi='cd $HOME/.local/share/chezmoi'
 
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+
+# Windows adds a `<file>:Zone.Identifier` sidecar (mark-of-the-web) to files
+# copied in from Windows — WSL only. Recursive from the current directory.
+alias delete-zone-identifiers="find . -type f -name '*:Zone.Identifier' -print -delete"
+{{- end }}
+
 # Git maintenance across every repo under ~/projects (where git-repos.txt's
 # clones land, one directory per repo, no nesting) — `*(N/)` is zsh's inline
 # null_glob + "directories only" qualifier, so an empty/missing ~/projects
@@ -1062,6 +1069,7 @@ Updates/maintenance:
   update-jrebel                     Update just the JRebel agent (WSL only).
   docker-update-images              Re-pull the current tag of every locally present Docker image.
   docker-prune-all                  Prune all docker data except for images (alias for `docker system prune --volumes -f`).
+  delete-zone-identifiers           Delete every Windows `*:Zone.Identifier` file under the current directory (WSL only).
 
 Gradle:
   gradle-refresh-dependencies       Refreshes dependencies with a clean build. Excludes tests & checkstyle/spotbugs tasks if present.

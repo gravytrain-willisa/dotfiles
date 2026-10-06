@@ -145,6 +145,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `gradle-refresh-dependencies` | Clean Gradle build with dependencies refreshed, skipping checkstyle/spotbugs tasks the project doesn't have |
 | `gradle-show-dependency-updates` | `./gradlew dependencyUpdates` |
 | `npm-recreate-package-lock` | Recreate `package-lock.json` and `node_modules` from scratch |
+| `delete-zone-identifiers` | WSL only: delete every `*:Zone.Identifier` file (left by Windows when copying files in) under the current directory |
 | `cd-projects` | `cd ~/projects` |
 | `cd-chezmoi` | `cd ~/.local/share/chezmoi` (the chezmoi source directory) |
 | `kgm-connect-to-jump-server <stage> <ip>` / `triton-connect-to-jump-server <stage> <ip>` | SSH tunnel to that system's jump box (needs `aws-login` first) |
