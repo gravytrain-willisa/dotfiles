@@ -149,8 +149,10 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `cd-projects` | `cd ~/projects` |
 | `cd-chezmoi` | `cd ~/.local/share/chezmoi` (the chezmoi source directory) |
 | `kgm-connect-to-jump-server <stage> <ip>` / `triton-connect-to-jump-server <stage> <ip>` | SSH tunnel to that system's jump box (needs `aws-login` first) |
+| `bi-dev-copy-qe-all` / `qs-dev-copy-qe-all` | Run that system's catalina, properties, jars and web copies below in order, stopping at the first failure |
 | `bi-dev-copy-qe-jars` / `qs-dev-copy-qe-jars` | rsync `target/*.jar` + `target/dependency/*.jar` from `~/projects/(bi\|qs)-quote-engine` to that system's `*-app-dev` Tomcat lib dir |
 | `bi-dev-copy-qe-properties` / `qs-dev-copy-qe-properties` | rsync `~/projects/sysadmin-tools/tomcat/application-configs/(bedfords\|quotesearcher)-dev` to that system's `*-app-dev` `~/gtconf` |
+| `bi-dev-copy-qe-catalina` / `qs-dev-copy-qe-catalina` | rsync `bin/` + `conf/` from `~/projects/sysadmin-tools/tomcat/catalina/(bedfords\|quotesearcher)-dev` to that system's `*-app-dev` `~/tomcat/{bin,conf}` |
 | `bi-dev-copy-qe-web` / `qs-dev-copy-qe-web` | rsync `~/projects/(bi\|qs)-quote-engine/src/main/webapp` to that system's `*-app-dev` `~dev-securequotedirect`/`~dev-quotesearcher` `public_html` |
 | `help` | Show this list from inside the shell, plus your configured direct-server aliases |
 

@@ -1098,6 +1098,17 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       `sysadmin-tools`'s own internal names for the two systems — not the
       same `bi`/`qs` prefix used everywhere else in this file, so the
       function itself translates one to the other.
+    - `bi-dev-copy-qe-catalina`/`qs-dev-copy-qe-catalina` — copy that
+      system's dev Tomcat `bin/` and `conf/` from
+      `~/projects/sysadmin-tools/tomcat/catalina/(bedfords|quotesearcher)-dev`
+      to that system's `*-app-dev` server's
+      `/home/dev-java-engine-user/tomcat/{bin,conf}`, via `_rsync-to-dev`
+      (one call per directory, so `--delete` prunes stale files within
+      `bin/` and `conf/` only). The source is a full `CATALINA_BASE`
+      skeleton, but only `bin/` and `conf/` are configuration — `lib/`
+      belongs to the jars function (a `--delete` sync from the skeleton's
+      empty `lib/` would wipe the deployed jars), and
+      `logs`/`temp`/`work`/`webapps` are runtime state, never touched.
     - `bi-dev-copy-qe-web`/`qs-dev-copy-qe-web` — copy
       `~/projects/(bi|qs)-quote-engine/src/main/webapp` to that system's
       `*-app-dev` server's `public_html`, via `_rsync-to-dev`. The owning
@@ -1105,6 +1116,10 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       differs per system: `dev-securequotedirect` for `bi`,
       `dev-quotesearcher` for `qs` — again, not the `bi`/`qs` prefix, so
       hardcoded per function rather than derived.
+    - `bi-dev-copy-qe-all`/`qs-dev-copy-qe-all` — call that system's
+      catalina, properties, jars and web functions above in that order
+      (config before the jars that depend on it), chained with `&&` so the
+      first failure stops the rest.
     - All of the above target `*-app-dev` — hostnames come from `servers` in
       `.chezmoidata/dotfiles.yaml` (`bi-app-dev`/`qs-app-dev`), never
       hardcoded.
