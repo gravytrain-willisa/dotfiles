@@ -1025,6 +1025,23 @@ _copy-quote-engine-properties-to-dev() {
 bi-dev-copy-qe-properties() { _copy-quote-engine-properties-to-dev bedfords "{{ index .servers "bi-app-dev" }}"; }
 qs-dev-copy-qe-properties() { _copy-quote-engine-properties-to-dev quotesearcher "{{ index .servers "qs-app-dev" }}"; }
 
+# Copy the Tomcat catalina bin/ and conf/ for a system's dev environment.
+# sysadmin-tools/tomcat/catalina/<system>-dev is a full CATALINA_BASE
+# skeleton, but only bin/ and conf/ are configuration: lib/ is owned by the
+# jars alias above (--delete would wipe it), logs/temp/work/webapps are
+# runtime state, and the repo only holds .gitkeep placeholders for them.
+# Those other directories must never be pruned, so --delete is scoped to
+# bin/ and conf/ individually rather than ever syncing the tomcat/ root.
+_copy-quote-engine-catalina-to-dev() {
+  local system_name="$1" host="$2"
+  local src="$HOME/projects/sysadmin-tools/tomcat/catalina/${system_name}-dev"
+  local dest=/home/dev-java-engine-user/tomcat
+  _rsync-to-dev "$host" "$dest/bin" dev-java-engine-user "$src"/bin/*(N) \
+    && _rsync-to-dev "$host" "$dest/conf" dev-java-engine-user "$src"/conf/*(N)
+}
+bi-dev-copy-qe-catalina() { _copy-quote-engine-catalina-to-dev bedfords "{{ index .servers "bi-app-dev" }}"; }
+qs-dev-copy-qe-catalina() { _copy-quote-engine-catalina-to-dev quotesearcher "{{ index .servers "qs-app-dev" }}"; }
+
 # Copy the quote-engine webapp content to its dev public_html dir.
 _copy-quote-engine-web-to-dev() {
   local project="$1" host="$2" owner="$3"
@@ -1033,6 +1050,16 @@ _copy-quote-engine-web-to-dev() {
 }
 bi-dev-copy-qe-web() { _copy-quote-engine-web-to-dev bi-quote-engine "{{ index .servers "bi-app-dev" }}" dev-securequotedirect; }
 qs-dev-copy-qe-web() { _copy-quote-engine-web-to-dev qs-quote-engine "{{ index .servers "qs-app-dev" }}" dev-quotesearcher; }
+
+# Everything above for one system, config first, then jars and web content.
+# Stops at the first failure rather than deploying jars against a config that
+# didn't land.
+bi-dev-copy-qe-all() {
+  bi-dev-copy-qe-catalina && bi-dev-copy-qe-properties && bi-dev-copy-qe-jars && bi-dev-copy-qe-web
+}
+qs-dev-copy-qe-all() {
+  qs-dev-copy-qe-catalina && qs-dev-copy-qe-properties && qs-dev-copy-qe-jars && qs-dev-copy-qe-web
+}
 
 # Connect to other servers — hostnames come from `servers` in
 # .chezmoidata/dotfiles.yaml, not hardcoded here (see CLAUDE.md: never
@@ -1091,9 +1118,13 @@ AWS RDS access via jump servers (requires `aws-login <profile>` to be run first)
   triton-connect-to-jump-server     SSH tunnel to the Triton AWS jump box <stage> <jump-box-ip>.
 
 Quote-engine dev deploys:
+  bi-dev-copy-qe-all                Run every bi-dev-copy-qe-* deploy below (catalina, properties, jars, web) in order.
+  bi-dev-copy-qe-catalina           rsync Bedford Tomcat catalina bin/ + conf/ to the dev Tomcat on bi-app-dev.
   bi-dev-copy-qe-jars               rsync Bedford quote-engine JARS to the dev Tomcat on bi-app-dev.
   bi-dev-copy-qe-properties         rsync Bedford Tomcat config to the dev Tomcat on bi-app-dev.
   bi-dev-copy-qe-web                rsync Bedford quote-engine web files to the dev Tomcat on bi-app-dev.
+  qs-dev-copy-qe-all                Run every qs-dev-copy-qe-* deploy below (catalina, properties, jars, web) in order.
+  qs-dev-copy-qe-catalina           rsync QuoteSearcher Tomcat catalina bin/ + conf/ to the dev Tomcat on qs-app-dev.
   qs-dev-copy-qe-jars               rsync QuoteSearcher quote-engine JARS to the dev Tomcat on qs-app-dev.
   qs-dev-copy-qe-properties         rsync QuoteSearcher Tomcat config to the dev Tomcat on qs-app-dev.
   qs-dev-copy-qe-web                rsync QuoteSearcher quote-engine web files to the dev Tomcat on qs-app-dev.
