@@ -296,7 +296,10 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    enable` is run for every version installed, since its shims live under
    that version's own bin directory rather than being shared across
    versions, so pnpm/yarn versions come from each project's `package.json`
-   `packageManager` field regardless of which Node version is active.
+   `packageManager` field regardless of which Node version is active. This
+   step never upgrades a pinned major (`nvm install 24` no-ops once any 24.x
+   exists) — `update-node [--all]` (item 25) does, using `nvm version-remote`
+   plus `--reinstall-packages-from` to carry the old patch's globals over.
 10. **Node global packages** — installed from
    [`dot_config/dotfiles/node-globals.txt`](../dot_config/dotfiles/node-globals.txt)
    against **every** Node version in `nvm-versions.txt`, not just the
@@ -1373,7 +1376,13 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     indefinitely); on Linux only (no apt on macOS) `sudo apt update && sudo
     apt upgrade -y` followed by `sudo apt autoremove -y && sudo apt clean`
     (same idea — drops packages no longer needed by anything installed, then
-    clears `/var/cache/apt/archives`); npm globals, once per Node version in
+    clears `/var/cache/apt/archives`); `update-node --all`, which installs the
+    newest patch of each Node version in `nvm-versions.txt` (also runnable
+    standalone, default-marked version only without `--all`), migrating the
+    old patch's global packages, pinning `nvm alias default` to the exact
+    installed patch (every run, so drift is corrected), re-enabling corepack and re-running the
+    `.nvmrc` chpwd hook so the current shell switches immediately (`.nvmrc` is
+    never cached, so nothing else needs refreshing); npm globals, once per Node version in
     `nvm-versions.txt` (each has its own global `node_modules`) — runs
     `npm-check-updates` (`ncu -g --target minor -u`) to auto-apply anything
     that isn't a semver-major bump, then a plain `ncu -g` to print any
