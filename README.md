@@ -222,7 +222,7 @@ present.
 - The Windows PowerShell profile is append-only, not chezmoi-owned — only one
   line gets injected; the rest of your profile is left untouched.
 - WSL-exported shell env vars do **not** reach Windows-native binaries
-  (`aws-vault.exe`, `aws.exe`, `op.exe`) — those need a persistent Windows
+  (`aws-vault.exe`, `aws.exe`, `sam.exe`, `op.exe`) — those need a persistent Windows
   user env var instead (see the manual checklist above).
 - Some changes (a new `PATH` entry, a new shell function) require a new
   terminal or `exec zsh` to take effect.

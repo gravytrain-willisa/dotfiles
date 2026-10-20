@@ -24,7 +24,8 @@
 # native Windows CreateProcess searching %PATH% — it has no visibility into
 # WSL's filesystem or the Linuxbrew-installed `aws`. So the Windows build of
 # the AWS CLI needs installing too, purely so aws-vault.exe's child process
-# has something to find.
+# has something to find. The AWS SAM CLI gets the same treatment (Homebrew's
+# aws-sam-cli covers WSL itself) so `sam.exe` is on the Windows side too.
 set -euo pipefail
 
 {{ template "brew-shellenv.sh.tmpl" . }}
@@ -56,6 +57,13 @@ if command -v winget.exe >/dev/null 2>&1; then
     echo "shell, restart WSL (run 'wsl --shutdown' from Windows, then" >&2
     echo "reopen) to pick up the updated Windows PATH." >&2
   fi
+  if ! command -v sam.exe >/dev/null 2>&1; then
+    winget.exe install --id Amazon.SAM-CLI -e --silent \
+      --accept-package-agreements --accept-source-agreements
+    echo "AWS SAM CLI installed via winget — if 'sam.exe' isn't found in a new" >&2
+    echo "shell, restart WSL (run 'wsl --shutdown' from Windows, then" >&2
+    echo "reopen) to pick up the updated Windows PATH." >&2
+  fi
   if ! command -v op.exe >/dev/null 2>&1; then
     winget.exe install --id AgileBits.1Password.CLI -e --silent \
       --accept-package-agreements --accept-source-agreements
@@ -67,6 +75,7 @@ else
   echo "winget.exe not found on PATH — install these manually on the" >&2
   echo "Windows side: winget install --id ByteNess.AWSVault -e" >&2
   echo "             winget install --id Amazon.AWSCLI -e" >&2
+  echo "             winget install --id Amazon.SAM-CLI -e" >&2
   echo "             winget install --id AgileBits.1Password.CLI -e" >&2
 fi
 

@@ -834,7 +834,7 @@ update-all() {
   # one skip/no-op doesn't stop the rest of update-all.
   if command -v winget.exe >/dev/null 2>&1; then
     echo "==> winget upgrade (Windows-side CLIs)" >&2
-    for id in Starship.Starship ByteNess.AWSVault Amazon.AWSCLI AgileBits.1Password.CLI; do
+    for id in Starship.Starship ByteNess.AWSVault Amazon.AWSCLI Amazon.SAM-CLI AgileBits.1Password.CLI; do
       winget.exe upgrade --id "$id" -e --silent \
         --accept-package-agreements --accept-source-agreements || true
     done

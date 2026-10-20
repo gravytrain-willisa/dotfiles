@@ -549,7 +549,10 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       env vars into that child process directly rather than making it read
       `~/.aws/config`, so the fact that native `aws.exe` would otherwise
       look at a *separate* `%USERPROFILE%\.aws\config` (not WSL's
-      `~/.aws/config`) never actually comes up in practice.
+      `~/.aws/config`) never actually comes up in practice. The AWS SAM
+      CLI is handled the same way (`winget install --id Amazon.SAM-CLI
+      -e`, giving `sam.exe`) alongside the Homebrew `aws-sam-cli` used
+      inside WSL, and is upgraded by `update-all` too.
 
     **`op-desktop` needs three env vars on every platform, not just WSL** —
     `AWS_VAULT_BACKEND`, `AWS_VAULT_OP_VAULT_ID`, and
@@ -1393,9 +1396,9 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     vendor/version than the one pinned here — see item 6. Bump the version
     in `sdkman-packages.txt` instead, same as any other manifest in this
     repo. On WSL only, also runs `winget.exe upgrade --id ...` for each of
-    the four packages this setup installs via winget
+    the five packages this setup installs via winget
     (`Starship.Starship`, `ByteNess.AWSVault`, `Amazon.AWSCLI`,
-    `AgileBits.1Password.CLI` — see items 15 and 19) — these are
+    `Amazon.SAM-CLI`, `AgileBits.1Password.CLI` — see items 15 and 19) — these are
     Windows-native binaries outside WSL's brew/apt, so nothing above this
     step ever touches them, and they'd otherwise silently drift out of
     date (observed in practice: a Windows-side AWS CLI several patch
