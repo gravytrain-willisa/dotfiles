@@ -20,12 +20,11 @@ httpd:2.4
 mailhog/mailhog:latest
 mysql:8.4
 openapitools/openapi-generator-cli
-public.ecr.aws/amazoncorretto/amazoncorretto:11
 public.ecr.aws/amazoncorretto/amazoncorretto:21
 public.ecr.aws/docker/library/redis:7.0
 public.ecr.aws/nginx/nginx:1.28
 redis:7.0
 swaggerapi/swagger-editor
-tomcat:9.0-jdk11-corretto
+tomcat:9.0-jdk21-corretto
 wordpress:php8.3
-wordpress:7.0.2-php8.3-fpm
+wordpress:7-php8.3-fpm
