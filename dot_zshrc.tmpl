@@ -727,6 +727,60 @@ ecr_auth() {
   touch "$ECR_AUTH_STAMP"
 }
 
+# update-node [--all] — pull the newest patch of the Node major(s) pinned in
+# nvm-versions.txt. The manifest install (run_onchange_0008) can't do this:
+# `nvm install 24` no-ops once any 24.x exists, so a newer 24.x.y never
+# arrives. Default is just the `default`-marked version; --all covers every
+# line. `nvm alias default 24` / `nvm use 24` already resolve to the highest
+# *installed* 24.x, so nothing else needs repointing — but global npm packages
+# and corepack shims are per exact version directory, hence
+# --reinstall-packages-from (resolved against the old patch before the new one
+# is installed) and a fresh corepack enable. Additive-only like every manifest
+# here: the old patch is left installed.
+update-node() {
+  local all=false version flag latest current updated=false
+  [ "$1" = "--all" ] && all=true
+  while read -r version flag; do
+    [ -z "$version" ] && continue
+    case "$version" in '#'*) continue ;; esac
+    if ! $all && [ "$flag" != "default" ]; then
+      continue
+    fi
+    latest="$(nvm version-remote "$version")"
+    current="$(nvm version "$version")"
+    if [ "$latest" = "N/A" ]; then
+      echo "-- node $version: no matching remote version found, skipping --" >&2
+      continue
+    fi
+    if [ "$current" = "$latest" ]; then
+      echo "-- node $version: already at $latest --" >&2
+    else
+      echo "==> node $version: $current -> $latest" >&2
+      if [ "$current" = "N/A" ]; then
+        nvm install "$latest" || continue
+      else
+        nvm install "$latest" --reinstall-packages-from="$current" || continue
+      fi
+      updated=true
+{{ includeTemplate "nvm-corepack-enable.sh.tmpl" . | trim | indent 6 }}
+    fi
+    # Pin `default` to the exact patch now installed (not just the major).
+    # `nvm alias` is idempotent, so this also corrects a default that drifted
+    # or was pointed elsewhere when the version was already up to date.
+    if [ "$flag" = "default" ]; then
+      nvm alias default "$latest" >/dev/null
+    fi
+  done < "$HOME/.config/dotfiles/nvm-versions.txt"
+  # Back to the default in this shell, then let the .nvmrc hook override it
+  # if the current directory's project asks for something else.
+  nvm use default >/dev/null
+  # The chpwd hook only fires on the *next* cd — re-run it now.
+  # (.nvmrc itself is never cached; it's re-read on every cd.)
+  _nvm_auto_use
+  $updated && echo "Old patch versions are still installed; remove with \`nvm uninstall <version>\` if unwanted. Other open shells need \`exec zsh\`." >&2
+  return 0
+}
+
 # Automated updates ---------------------------------------------------------
 #
 # Everything this machine's setup depends on, in one command: the dotfiles
@@ -766,6 +820,9 @@ update-all() {
   # than auto-applied, since a major bump can break the CLI's own behavior.
   # Skips any Node version that doesn't have npm-check-updates installed
   # (only installed on Node >=22 per node-globals.txt) rather than erroring.
+  echo "==> node (latest patch of each pinned version)" >&2
+  update-node --all
+
   echo "==> npm globals (npm-check-updates)" >&2
   while read -r version flag; do
     [ -z "$version" ] && continue
@@ -1092,8 +1149,9 @@ Credential/ secret management:
   ssh-logout                        Remove the keys from the local ssh-agent (ssh falls back to the 1Password agent).
 
 Updates/maintenance:
-  update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, npm globals, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only).
+  update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, Node patch versions, npm globals, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only).
   update-jrebel                     Update just the JRebel agent (WSL only).
+  update-node [--all]               Install the newest patch of the default Node version (--all: every version in nvm-versions.txt), carrying over npm globals and pinning `nvm alias default` to it.
   docker-update-images              Re-pull the current tag of every locally present Docker image.
   docker-prune-all                  Prune all docker data except for images (alias for `docker system prune --volumes -f`).
   delete-zone-identifiers           Delete every Windows `*:Zone.Identifier` file under the current directory (WSL only).
