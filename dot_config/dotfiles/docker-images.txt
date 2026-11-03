@@ -26,5 +26,5 @@ public.ecr.aws/nginx/nginx:1.28
 redis:7.0
 swaggerapi/swagger-editor
 tomcat:9.0-jdk21-corretto
-wordpress:php8.3
-wordpress:7-php8.3-fpm
+wordpress:php8.5
+wordpress:7-php8.5-fpm

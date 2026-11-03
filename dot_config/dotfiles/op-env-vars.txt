@@ -22,3 +22,6 @@ SNYK_CFG_ORG op://Private/Snyk API Key/org id
 
 # Advanced Custom Fields Pro
 ACF_PRO_LICENSE_KEY op://GT Digital/ACF Pro Licence Key/credential
+
+# The7 Classic
+THE7_CLASSIC_PURCHASE_CODE op://Client-Bedford/The7 Classic Purchase Code/credential
