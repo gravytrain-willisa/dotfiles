@@ -1,0 +1,10 @@
+# Managed by chezmoi — edit dot_zshenv in the dotfiles source repo, not this
+# file directly.
+#
+# Read by EVERY zsh — interactive or not (scripts, `zsh -c`, agents, cron, IDE
+# tasks) — unlike ~/.zshrc, which only interactive shells read. All the real
+# work is in env.sh (shared with bash); run in `emulate sh` so zsh's own
+# defaults (nomatch errors on unmatched globs, no word splitting) can't break
+# that POSIX-sh file. Must stay silent and fast. See CLAUDE.md, "Everything
+# must work in interactive AND non-interactive shells".
+[ -f "$HOME/.config/dotfiles/env.sh" ] && emulate sh -c '. "$HOME/.config/dotfiles/env.sh"'

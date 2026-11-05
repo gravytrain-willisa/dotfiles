@@ -8,3 +8,14 @@
 {{- if not (and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower))) }}
 .config/systemd/user/ssh-agent-relay.service
 {{- end }}
+
+{{/* op/aws-vault wrappers exist to reach the winget-installed Windows .exe
+     binaries — meaningless anywhere but WSL (macOS runs the native brew
+     binaries). .zprofile only exists to undo macOS's path_helper reordering. */ -}}
+{{- if not (and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower))) }}
+.local/bin/op
+.local/bin/aws-vault
+{{- end }}
+{{- if ne .chezmoi.os "darwin" }}
+.zprofile
+{{- end }}

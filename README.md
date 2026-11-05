@@ -125,6 +125,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 
 | Command | Purpose |
 |---|---|
+| `dotfiles-env-status` | Read-only, non-interactive: are the `op`/`aws`/`ssh` login caches fresh, and what to run if not (for agents/scripts) |
 | `chezmoi diff` | Preview what `chezmoi apply` would change — renders every template, runs no scripts |
 | `chezmoi apply -v` | Apply for real, printing each script's output |
 | `chezmoi update` | `git pull` the source dir *then* `chezmoi apply` — use this, not plain `apply`, to pick up changes made/pushed since the source dir was last cloned |
@@ -184,7 +185,8 @@ than the one you're already editing).
 | 1Password-sourced env vars | [`dot_config/dotfiles/op-env-vars.txt`](dot_config/dotfiles/op-env-vars.txt) |
 | SSH keys for `ssh-login` | [`dot_config/dotfiles/ssh-keys.txt`](dot_config/dotfiles/ssh-keys.txt) |
 | How long `op-login`/`aws-login`/`ssh-login` results are kept | `credential_cache_hours` in [`.chezmoidata/dotfiles.yaml`](.chezmoidata/dotfiles.yaml), then `chezmoi apply` and open a new shell (one-off: `export DOTFILES_CACHE_TTL=<seconds>` before the shell starts) |
-| Shell aliases/functions | [`dot_zshrc.tmpl`](dot_zshrc.tmpl) — keep `help`'s static list in sync (see [CLAUDE.md](CLAUDE.md)) |
+| Shell aliases/functions (interactive only) | [`dot_zshrc.tmpl`](dot_zshrc.tmpl) — keep `help`'s static list in sync (see [CLAUDE.md](CLAUDE.md)) |
+| `PATH`, tool env vars, anything a script/agent/cron job needs (every shell, interactive or not) | [`dot_config/dotfiles/env.sh.tmpl`](dot_config/dotfiles/env.sh.tmpl) — POSIX sh, silent and fast; never only `dot_zshrc.tmpl` (see [CLAUDE.md](CLAUDE.md)) |
 | Git config | [`dot_gitconfig.tmpl`](dot_gitconfig.tmpl) |
 | SSH config | [`private_dot_ssh/config.tmpl`](private_dot_ssh/config.tmpl) |
 | AWS config file (`~/.aws/config`) | [`dot_aws/config.tmpl`](dot_aws/config.tmpl) |
@@ -231,6 +233,19 @@ present.
   internal infrastructure — **keep this repo private**.
 
 ## Troubleshooting
+
+**Credentials / `node` / `mvn` / `aws` missing in an agent, script, `bash -c` or cron job — but fine in your terminal** — `~/.zshrc` is only read by
+*interactive* zsh. Everything non-interactive shells need is loaded from
+`~/.zshenv` → `~/.config/dotfiles/env.sh` (zsh, any mode) and, for bash, from
+`~/.bash_env` (via `BASH_ENV`, which `env.sh` exports) / `~/.bash_profile`
+(login). First run `dotfiles-env-status`: the login caches expire after
+`credential_cache_hours` (a non-interactive shell can't answer 1Password's
+prompt), so the fix is usually `login-all` in a real terminal. Known limit:
+a bash script started from a *completely* empty environment (no `BASH_ENV`,
+not a login shell) reads no startup file, so only agents launched from a
+dotfiles-loaded shell, or via `zsh`/`bash -l`, get the env. `op`/`aws-vault`
+are real wrappers in `~/.local/bin` (not functions) and need WSL's Windows
+interop `PATH` to find the `.exe`.
 
 **`aws-vault.exe` not found in a new shell right after install** — WSL only
 re-reads the Windows `PATH` it inherits via interop at session start. Close
@@ -532,7 +547,12 @@ Package manifests (editable, additive-only — see "How to customize")
   dot_config/dotfiles/ssh-keys.txt
 
 Shell/profile templates -> target files
-  dot_zshrc.tmpl                        -> ~/.zshrc
+  dot_zshrc.tmpl                        -> ~/.zshrc (interactive zsh only)
+  dot_zshenv                            -> ~/.zshenv (every zsh) -> sources env.sh
+  dot_config/dotfiles/env.sh.tmpl       -> ~/.config/dotfiles/env.sh (PATH, tool env, login-cache loads; shared by zsh and bash)
+  dot_bash_env / dot_bash_profile       -> ~/.bash_env (non-interactive bash via BASH_ENV) / ~/.bash_profile (login bash)
+  dot_zprofile                          -> ~/.zprofile (macOS only; re-applies env.sh after path_helper)
+  dot_local/bin/executable_op, _aws-vault, _dotfiles-env-status.tmpl -> ~/.local/bin/ (op/aws-vault wrap the Windows .exe, WSL only)
   dot_gitconfig.tmpl                    -> ~/.gitconfig
   dot_aws/config.tmpl                   -> ~/.aws/config
   private_dot_ssh/config.tmpl           -> ~/.ssh/config (dir mode 0700)

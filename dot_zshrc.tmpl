@@ -1,11 +1,11 @@
 # Managed by chezmoi — edit dot_zshrc.tmpl in the dotfiles source repo, not
 # this file directly (chezmoi apply will overwrite local edits here).
 
-# ~/.local/bin — chezmoi-managed scripts (connect-to-aws-jump-server.sh,
-# etc.) land here, plus npiperelay.exe on WSL. Never on PATH by default in a
-# non-login zsh shell (that's a .profile/POSIX-sh convention, and zsh
-# doesn't read .profile), so it needs adding explicitly.
-export PATH="$HOME/.local/bin:$PATH"
+# PATH, tool homes (SDKMAN/pyenv/nvm default/brew), AWS_REGION, SSH_AUTH_SOCK and
+# the login-cache loads all live in ~/.zshenv -> ~/.config/dotfiles/env.sh
+# (dot_config/dotfiles/env.sh.tmpl), which every zsh and bash reads — not just
+# interactive ones. Only interactive-only setup belongs in this file; see
+# "Everything must work in interactive AND non-interactive shells" in CLAUDE.md.
 
 export ZSH="$HOME/.oh-my-zsh"
 # Empty, not "robbyrussell"/any theme name — starship (below) owns the
@@ -34,11 +34,7 @@ command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
 export SDKMAN_DIR="$HOME/.sdkman"
 [ -s "$SDKMAN_DIR/bin/sdkman-init.sh" ] && source "$SDKMAN_DIR/bin/sdkman-init.sh"
 
-# M2_HOME — some tools/IDEs (e.g. IntelliJ) still look for this rather than
-# just resolving `mvn` off PATH. SDKMAN's "current" symlink always points at
-# whichever Maven version is active (default, or per-project via
-# .sdkmanrc/`sdk env`), so this stays correct without hardcoding a version.
-export M2_HOME="$SDKMAN_DIR/candidates/maven/current"
+# (M2_HOME and the other SDKMAN candidate homes are exported by env.sh.)
 
 # nvm
 export NVM_DIR="$HOME/.nvm"
@@ -78,16 +74,8 @@ if command -v nvm >/dev/null 2>&1; then
 fi
 
 # pyenv
-# PYENV_ROOT stays at ~/.pyenv unconditionally — `brew --prefix pyenv` is the
-# Cellar/opt path for the pyenv *binary*, not a pyenv root; pointing
-# PYENV_ROOT there would make pyenv install interpreters into a directory
-# Homebrew rewrites on upgrade. Only the binary itself needs to be found via
-# brew when installed that way, hence PATH (not PYENV_ROOT) below.
-export PYENV_ROOT="$HOME/.pyenv"
-export PATH="$PYENV_ROOT/bin:$PATH"
-if command -v brew >/dev/null 2>&1 && [ -x "$(brew --prefix pyenv 2>/dev/null)/bin/pyenv" ]; then
-  export PATH="$(brew --prefix pyenv)/bin:$PATH"
-fi
+# PYENV_ROOT and the pyenv/shims PATH entries come from env.sh; this only adds
+# the `pyenv` shell function (rehash/shell integration).
 command -v pyenv >/dev/null 2>&1 && eval "$(pyenv init -)"
 
 # direnv — per-project .envrc auto-loading (installed via brew-packages.txt)
@@ -102,15 +90,14 @@ if command -v brew >/dev/null 2>&1; then
   [ -s "$FZF_PREFIX/shell/key-bindings.zsh" ] && \. "$FZF_PREFIX/shell/key-bindings.zsh"
 fi
 
-# 1Password SSH agent — shared with the run_* scripts that need SSH before
-# any interactive shell has run, see .chezmoitemplates/ssh-agent-sock.sh.tmpl.
-{{ template "ssh-agent-sock.sh.tmpl" . }}
+# SSH_AUTH_SOCK (1Password agent / local ssh-login agent) is set up by env.sh;
+# _ssh_select_agent below keeps it current at every prompt.
 
 # JRebel agent — WSL only (installed by run_once_0024-install-jrebel-agent.sh.tmpl,
 # refreshed by update-all below). JREBEL_HOME lets IDE plugins/`-javaagent:`
 # invocations reference the install dir instead of a hardcoded path.
 {{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
-export JREBEL_HOME="$HOME/.local/share/jrebel"
+# (JREBEL_HOME is exported by env.sh.)
 
 # update-jrebel — same download update-all already folds in, exposed
 # standalone since a JRebel release can land between full update-all runs
@@ -121,97 +108,16 @@ update-jrebel() {
 }
 {{- end }}
 
-# AWS region fallback — dot_aws/config.tmpl only sets this for the [default]
-# profile; named profiles (aws-vault or otherwise) don't inherit region from
-# it. AWS_REGION/AWS_DEFAULT_REGION are the SDK's actual "if this profile
-# doesn't specify a region, use this" fallback regardless of profile name —
-# this is what fixes STS/GetSessionToken "Missing Region" errors on
-# profiles that don't set their own region in ~/.aws/config.
-#
-# This export only covers tools run *from inside WSL* (e.g. Linuxbrew's
-# `aws`). WSL does NOT forward exported shell variables to invoked Windows
-# processes by default — that requires explicitly listing the variable in
-# WSLENV with the /u flag, which isn't set up here. So this does nothing for
-# aws-vault.exe below: that's covered separately by a persistent Windows
-# user env var (see README, "AWS default region" / "aws-vault, backed by
-# 1Password") set once via PowerShell, which works regardless of whether
-# aws-vault.exe is invoked through WSL interop or a native Windows shell.
-export AWS_REGION="{{ .aws.default_region }}"
-export AWS_DEFAULT_REGION="{{ .aws.default_region }}"
-
-# aws-vault, backed by 1Password (op-desktop backend) rather than a plain
-# encrypted file — see run_once_0015-install-aws-vault.sh.tmpl for why WSL and
-# macOS install genuinely different binaries for this one.
-{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
-# NOTE: exporting AWS_VAULT_BACKEND here does NOT reach aws-vault.exe — same
-# WSL-doesn't-forward-env-vars-to-Windows-processes issue as AWS_REGION
-# above. This line only affects tools invoked from inside WSL itself (none,
-# currently, since aws-vault only runs as the Windows binary on this
-# platform) and is kept for clarity/documentation, not because it does
-# anything useful here. The actual backend selection comes from a
-# persistent Windows user env var — see README.
-export AWS_VAULT_BACKEND=op-desktop
-# aws-vault runs as a real Windows binary here (installed via winget), not
-# the Linuxbrew formula: only a genuine Windows process passes 1Password
-# desktop app's Authenticode check. This makes `aws-vault` on the command
-# line transparently invoke it through WSL interop.
-if command -v aws-vault.exe >/dev/null 2>&1; then
-  aws-vault() { aws-vault.exe "$@"; }
-fi
-# Same Authenticode-signature story as aws-vault above: a native `op` CLI
-# reached through the socat/npiperelay SSH relay would be rejected by the
-# desktop app's integration check, so this wraps the winget-installed
-# op.exe (already present for the AWS_VAULT_OP_VAULT_ID lookup in README)
-# instead of installing a separate Linux op binary.
-if command -v op.exe >/dev/null 2>&1; then
-  op() { op.exe "$@"; }
-fi
-{{- else if eq .chezmoi.os "darwin" }}
-export AWS_VAULT_BACKEND=op-desktop
-# op-desktop also hard-requires a vault + account id (fails with
-# `environment variable unset or empty: "OP_VAULT_ID"` otherwise) — unlike
-# WSL these are real shell exports here since aws-vault runs as a normal
-# native process, not a Windows binary WSL can't forward env vars to. Set
-# 1password.op_vault_id/op_account_id in .chezmoidata/dotfiles.yaml (see
-# README, "aws-vault env vars") to populate them.
-{{- if (index . "1password").op_vault_id }}
-export AWS_VAULT_OP_VAULT_ID="{{ (index . "1password").op_vault_id }}"
-{{- end }}
-{{- if (index . "1password").op_account_id }}
-export AWS_VAULT_OP_DESKTOP_ACCOUNT_ID="{{ (index . "1password").op_account_id }}"
-{{- end }}
-{{- end }}
-
-# mtime <path> — seconds-since-epoch of a file's mtime. `stat`'s flags for
-# this differ between GNU coreutils (Linux) and BSD (macOS) — trying both
-# rather than templating on .chezmoi.os keeps this a plain portable
-# function instead of yet another os-conditional block.
-mtime() {
-  stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null
-}
+# AWS_REGION/AWS_DEFAULT_REGION, AWS_VAULT_* and the `op`/`aws-vault` Windows
+# wrappers (now real executables in ~/.local/bin, so scripts and agents get them
+# too) live in env.sh and dot_local/bin — not here.
 
 # Login-result caching ------------------------------------------------------
 #
-# op-login, aws-login and ssh-login each cost a 1Password unlock/approval
-# prompt, and 1Password treats every separate op(.exe)/aws-vault(.exe)
-# process as a new app — so doing it once per terminal tab gets old fast.
-# Their results are instead kept for DOTFILES_CACHE_TTL seconds (plaintext,
-# mode 0600, under ~/.cache — the same exposure as the values already being
-# in `env`) and re-loaded into every new shell with no 1Password involvement
-# at all. Change `credential_cache_hours` in .chezmoidata/dotfiles.yaml (then
-# `chezmoi apply`) to adjust; a DOTFILES_CACHE_TTL already in the environment
-# wins, for a one-off override. Keep it <= 12h, the lifetime of the AWS
-# credentials themselves.
-: "${DOTFILES_CACHE_TTL:=$(( {{ .credential_cache_hours }} * 3600 ))}"
-OP_ENV_CACHE="$HOME/.cache/op-env-cache"
-AWS_LOGIN_CACHE="$HOME/.cache/aws-login-cache"
-SSH_LOCAL_AGENT_SOCK="$HOME/.ssh/local-agent.sock"
-
-# _cache_fresh <file> — exists and younger than DOTFILES_CACHE_TTL.
-_cache_fresh() {
-  [ -f "$1" ] || return 1
-  [ $(( $(date +%s) - $(mtime "$1") )) -lt "$DOTFILES_CACHE_TTL" ]
-}
+# The cache *loading* (and DOTFILES_CACHE_TTL, the cache paths, mtime,
+# _cache_fresh, _op_cache_usable) is in env.sh so non-interactive shells get
+# the credentials too — see its "Login caches" section for the design. This
+# file only keeps the parts that *write* the caches.
 
 # _cache_write <file> — stdin to <file>, created 0600 (umask, not a chmod
 # afterwards, so the content is never briefly world-readable).
@@ -219,29 +125,6 @@ _cache_write() {
   mkdir -p "$(dirname "$1")"
   ( umask 077; cat >"$1" )
 }
-
-# Variables expected from op-login/aws-login start out empty rather than
-# unset, so tools that expand them (npm's `${CODEARTIFACT_AUTH_TOKEN}` in
-# .npmrc, most notably) don't fail in projects that never needed them. Only
-# fills in variables that are *unset* — a real value is never clobbered.
-_dotfiles_blank_defaults() {
-  local manifest="$HOME/.config/dotfiles/op-env-vars.txt" var ref
-  if [ -f "$manifest" ]; then
-    while read -r var ref; do
-      case "$var" in ''|'#'*) continue ;; esac
-      eval "export $var=\"\${$var-}\""
-    done <"$manifest"
-  fi
-  # CodeArtifact token vars (set by aws-login → codeartifact_auth, see
-  # `.codeartifact` in .chezmoidata/dotfiles.yaml). Newline-delimited for
-  # the same zsh word-splitting reason as codeartifact_auth's entries list.
-  while read -r var; do
-    [ -z "$var" ] && continue
-    eval "export $var=\"\${$var-}\""
-  done <<<"{{ range $profile, $domains := .codeartifact }}{{ range $domains }}{{ if hasKey . "env" }}{{ .env }}{{ else }}CODEARTIFACT_AUTH_TOKEN{{ end }}
-{{ end }}{{ end }}"
-}
-_dotfiles_blank_defaults
 
 # op-login [--refresh] — exports whatever env vars are listed in
 # op-env-vars.txt into this shell, each pulled from the mapped 1Password
@@ -262,18 +145,6 @@ _dotfiles_blank_defaults
 # calls without touching 1Password; --refresh/-f skips the cache. The cache
 # is ignored once the manifest is newer than it, so a newly added line gets
 # resolved rather than silently missing.
-_op_cache_usable() {
-  _cache_fresh "$OP_ENV_CACHE" && [ ! "$HOME/.config/dotfiles/op-env-vars.txt" -nt "$OP_ENV_CACHE" ]
-}
-
-_op_cache_load() {
-  if _op_cache_usable; then
-    . "$OP_ENV_CACHE"
-  else
-    rm -f "$OP_ENV_CACHE"
-  fi
-}
-
 op-login() {
   local refresh=0
   case "$1" in --refresh|-f) refresh=1 ;; esac
@@ -401,14 +272,6 @@ aws-logout() {
 # _aws_cache_usable <profile> — cache is fresh and was written for <profile>.
 _aws_cache_usable() {
   _cache_fresh "$AWS_LOGIN_CACHE" && grep -qxF "export AWS_LOGIN_PROFILE=${(q)1}" "$AWS_LOGIN_CACHE"
-}
-
-_aws_cache_load() {
-  if _cache_fresh "$AWS_LOGIN_CACHE"; then
-    . "$AWS_LOGIN_CACHE"
-  else
-    rm -f "$AWS_LOGIN_CACHE"
-  fi
 }
 
 {{ template "git-signing-key.sh.tmpl" . }}
@@ -539,10 +402,8 @@ dotfiles-login-reminder() {
 
   echo "Run 'help' to see all dotfiles-provided commands." >&2
 }
-# Re-load whatever op-login/aws-login/ssh-login left in the caches before
-# deciding what to remind about (no 1Password involvement, see above).
-_op_cache_load
-_aws_cache_load
+# env.sh already loaded the caches into this shell (via ~/.zshenv), so the
+# reminder below reflects what is really set.
 _ssh_select_agent
 dotfiles-login-reminder
 
@@ -577,24 +438,8 @@ dotfiles-login-reminder
 # more than one domain (e.g. two separate CodeArtifact domains under the
 # same `gravytrain` account), each of which needs its own independent
 # token live at once.
-CODEARTIFACT_TOKEN_TTL=43200 # 12h, matches --duration-seconds below
-
-# Export every still-valid cached token straight into its env var at shell
-# startup, so a new shell has working CodeArtifact auth (npm's `${...}`
-# placeholder in .npmrc) without an aws-login. Same freshness threshold as
-# codeartifact_auth's refresh check below.
-_codeartifact_cache_load() {
-  local profile domain token_env token_cache
-  while IFS=':' read -r profile domain token_env; do
-    [ -z "$profile" ] && continue
-    token_cache="$HOME/.cache/codeartifact-token-${profile}-${domain}"
-    [ -f "$token_cache" ] || continue
-    [ $(( $(date +%s) - $(mtime "$token_cache") )) -lt $((CODEARTIFACT_TOKEN_TTL - 3600)) ] || continue
-    export "${token_env}=$(cat "$token_cache")"
-  done <<<"{{ range $profile, $domains := .codeartifact }}{{ range $domains }}{{ $profile }}:{{ .domain }}:{{ if hasKey . "env" }}{{ .env }}{{ else }}CODEARTIFACT_AUTH_TOKEN{{ end }}
-{{ end }}{{ end }}"
-}
-_codeartifact_cache_load
+# CODEARTIFACT_TOKEN_TTL and the startup load of still-valid cached tokens are
+# in env.sh.
 
 codeartifact_auth() {
   local aws_profile="$1"
@@ -1147,6 +992,7 @@ Credential/ secret management:
   ssh-login [--refresh]             Load the SSH key(s) in ssh-keys.txt into a local ssh-agent for credential_cache_hours (avoids repeated 1Password prompts).
   git-signing-key-refresh           Re-fetch the git commit-signing public key from 1Password (git.signing_key_ref) and rebuild allowed_signers.
   ssh-logout                        Remove the keys from the local ssh-agent (ssh falls back to the 1Password agent).
+  dotfiles-env-status               Read-only, non-interactive: are the op/aws/ssh login caches fresh? Says what to run if not (for agents/scripts).
 
 Updates/maintenance:
   update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, Node patch versions, npm globals, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only).

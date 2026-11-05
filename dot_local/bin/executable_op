@@ -1,0 +1,15 @@
+#!/bin/bash
+# Managed by chezmoi — edit dot_local/bin/executable_op in the dotfiles source
+# repo, not this file directly. WSL only (ignored elsewhere via .chezmoiignore).
+#
+# `op` as a real executable rather than a shell function in ~/.zshrc, so
+# scripts, `bash -c` and agents get it too (functions don't survive into
+# subprocesses). Wraps the winget-installed Windows op.exe: only a genuine
+# Windows process passes 1Password desktop's Authenticode check — a native
+# Linux `op` reached through the socat/npiperelay relay would be rejected.
+# Needs the Windows interop PATH (WSL's default) to find op.exe.
+if ! command -v op.exe >/dev/null 2>&1; then
+  echo "op: op.exe not found on PATH (is Windows interop enabled, and is 1Password CLI installed via winget?)" >&2
+  exit 127
+fi
+exec op.exe "$@"

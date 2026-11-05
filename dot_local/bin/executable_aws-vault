@@ -1,0 +1,16 @@
+#!/bin/bash
+# Managed by chezmoi — edit dot_local/bin/executable_aws-vault in the dotfiles
+# source repo, not this file directly. WSL only (ignored elsewhere via
+# .chezmoiignore).
+#
+# `aws-vault` as a real executable rather than a shell function in ~/.zshrc,
+# so scripts, `bash -c` and agents get it too. Wraps the winget-installed
+# aws-vault.exe: only a genuine Windows process passes 1Password desktop's
+# Authenticode check (see run_once_0015-install-aws-vault.sh.tmpl). The
+# backend/vault settings it needs are persistent Windows user env vars, not
+# anything exported here (WSL doesn't forward env vars to Windows processes).
+if ! command -v aws-vault.exe >/dev/null 2>&1; then
+  echo "aws-vault: aws-vault.exe not found on PATH (is Windows interop enabled, and is it installed via winget?)" >&2
+  exit 127
+fi
+exec aws-vault.exe "$@"

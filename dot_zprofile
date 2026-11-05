@@ -1,0 +1,8 @@
+# Managed by chezmoi — edit dot_zprofile in the dotfiles source repo, not this
+# file directly.
+#
+# macOS only (ignored elsewhere via .chezmoiignore). Login zsh runs
+# /etc/zprofile's path_helper AFTER ~/.zshenv, which reorders PATH and pushes
+# the dotfiles' entries behind /usr/bin. Re-running env.sh here puts them back
+# in front (its PATH helper moves entries rather than duplicating them).
+[ -f "$HOME/.config/dotfiles/env.sh" ] && emulate sh -c '. "$HOME/.config/dotfiles/env.sh"'

@@ -1,0 +1,7 @@
+# Managed by chezmoi — edit dot_bash_env in the dotfiles source repo, not this
+# file directly.
+#
+# bash sources $BASH_ENV (exported by env.sh) for every non-interactive
+# invocation — `bash -c`, scripts — which otherwise read no startup file at
+# all. Silent and fast by design; see dot_config/dotfiles/env.sh.tmpl.
+[ -f "$HOME/.config/dotfiles/env.sh" ] && . "$HOME/.config/dotfiles/env.sh"

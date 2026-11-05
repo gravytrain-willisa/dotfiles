@@ -60,6 +60,16 @@ chezmoi's filename prefixes are load-bearing, not decorative:
 - The `NNNN` numeric prefix (4 digits, zero-padded, room for future insertions without renumbering everything) is execution order across *all* scripts, not scoped per-category, and is kept strictly unique — `run_once_before_0000-configure-sudo-timeout` runs first specifically so the sudo credential cache is widened before anything else needs sudo. Don't reintroduce a duplicate number to force a tie-break — check the "Repo layout" list in [README.md](README.md) (or the fuller step-by-step in [docs/setup-sequence.md](docs/setup-sequence.md)) before inserting a new script, and renumber everything after the insertion point so every script keeps a distinct `NNNN` that reflects real dependency order (e.g. anything Homebrew-dependent must sort after step 3).
 - `dot_*` → `~/.*`, `private_dot_*` → sets the target directory mode to `0700` (used for `~/.ssh`), `executable_*` sets the executable bit.
 
+### Everything must work in interactive AND non-interactive shells
+
+`~/.zshrc` is read **only by interactive zsh**. Agents (Claude Code, etc.), `zsh script`, `zsh -l`, `bash -c`, cron, IDE run configurations and git hooks never read it — so anything defined only there (PATH entries, tool env vars, credentials, shell functions) silently doesn't exist for them, even right after `login-all` succeeded. When adding or changing functionality, make it work in both worlds:
+
+- **Env that every process needs** — PATH entries, tool homes (`SDKMAN_DIR`, `PYENV_ROOT`, …), static exports (`AWS_REGION`, …), `SSH_AUTH_SOCK`, and *loading* the op/aws/CodeArtifact login caches — goes in the shared POSIX-sh file `dot_config/dotfiles/env.sh.tmpl` (installed as `~/.config/dotfiles/env.sh`; loaded by `~/.zshenv`, `~/.bash_env` via `BASH_ENV`, and `~/.bash_profile`), never only in `dot_zshrc.tmpl`. It must be fast, silent (no stdout/stderr), never prompt, and bash 3.2-safe (no zsh-isms like `${(q)var}`).
+- **Interactive-only** things stay in `dot_zshrc.tmpl`: oh-my-zsh, prompt/starship, completions, key bindings, hooks (`precmd`/`chpwd`), the login-reminder, and the login *commands* themselves (`op-login`, `aws-login`, … — they can need a 1Password prompt, which a non-interactive process can't answer).
+- **Tools a script or agent may call must be real executables** in `~/.local/bin` (chezmoi `dot_local/bin/executable_*`), not shell functions or aliases — functions don't survive into `bash -c`/subprocesses. (`op` and `aws-vault` wrap their `.exe` on WSL this way.)
+- Login caches have a TTL; a non-interactive shell can't refresh an expired one. Fail with a clear message pointing at `login-all` rather than silently continuing without credentials.
+- **Verify in a clean environment** — your own shell is already loaded and will hide the bug. Run a probe (env vars set? `aws`/`op`/`node`/`java`/`mvn` resolvable? `ssh-add -l`?) under each of: `env -i HOME=$HOME PATH=/usr/bin:/bin zsh probe.sh`, `… zsh -l …`, `… bash …`, `… bash -l …`, and `… TERM=dumb zsh -i …`. All five must agree (while caches are fresh).
+
 ### Scripts must stay bash 3.2-compatible
 
 Every script here starts `#!/bin/bash` — an absolute path, deliberately. `#!/usr/bin/env bash` would break the bootstrap, since `run_once_before_0000-configure-sudo-timeout` and `run_once_before_0001-install-zsh` run before Homebrew exists.
