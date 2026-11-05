@@ -535,8 +535,9 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       1Password app. If `aws-vault.exe` isn't found in a new shell right
       after this installs, restart WSL (`wsl --shutdown` from Windows, then
       reopen) — WSL only re-reads the Windows `PATH` it inherits via
-      interop at session start. `dot_zshrc.tmpl` adds an `aws-vault()`
-      shell function so plain `aws-vault ...` on the command line
+      interop at session start. `~/.local/bin/aws-vault` (a wrapper script, so
+      non-interactive shells get it too)
+      replaces the old `aws-vault()` shell function so plain `aws-vault ...` on the command line
       transparently calls `aws-vault.exe` — you never need to type the
       extension.
 
@@ -1542,6 +1543,32 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     `git-signing-key-refresh` once 1Password is ready, or just `ssh-login`,
     which fetches it when the file is missing. Rotate the key by running
     `git-signing-key-refresh` again.
+
+29. **Non-interactive shells (`~/.zshenv`, `env.sh`, `~/.bash_env`)** —
+    `~/.zshrc` is read only by interactive zsh, so an agent, `zsh script`,
+    `bash -c`, a cron job or an IDE task would never see anything defined
+    there — not `PATH` entries for brew/SDKMAN/pyenv/nvm, not `AWS_REGION`,
+    and not the credentials `op-login`/`aws-login` had exported, even
+    right after `login-all`. Everything such a process needs lives in
+    [`dot_config/dotfiles/env.sh.tmpl`](../dot_config/dotfiles/env.sh.tmpl)
+    (POSIX sh: silent, prompt-free, ~40ms, bash-3.2-safe), loaded by
+    [`dot_zshenv`](../dot_zshenv) (every zsh, via `emulate sh`),
+    [`dot_bash_env`](../dot_bash_env) (non-interactive bash: `env.sh`
+    exports `BASH_ENV`), [`dot_bash_profile`](../dot_bash_profile) (login
+    bash) and, on macOS, [`dot_zprofile`](../dot_zprofile) (undoes
+    `path_helper`'s `PATH` reordering). It also *reads* the three login
+    caches (`op-env-cache`, `aws-login-cache`, per-domain CodeArtifact
+    tokens) — never writes them; the login commands that can need a
+    1Password prompt stay in `dot_zshrc.tmpl`. Expired caches are deleted
+    and not loaded: `dotfiles-env-status` (in `~/.local/bin`) reports which
+    are stale and tells the caller to ask the human to run `login-all`.
+    `op` and `aws-vault` on WSL are executables in `~/.local/bin` wrapping
+    `op.exe`/`aws-vault.exe` rather than shell functions (functions don't
+    survive into subprocesses). A bash script started from a completely
+    empty environment (no `BASH_ENV`, not login) reads no startup file at
+    all — bash offers nothing to hook there. Rule for future changes: see
+    "Everything must work in interactive AND non-interactive shells" in
+    [CLAUDE.md](../CLAUDE.md).
 
 ## Manifest conventions
 

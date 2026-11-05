@@ -1,0 +1,42 @@
+#!/bin/bash
+# Managed by chezmoi — edit dot_local/bin/executable_dotfiles-env-status.tmpl
+# in the dotfiles source repo, not this file directly.
+#
+# Read-only, non-interactive: reports whether the login caches that env.sh
+# loads into every shell are present and unexpired, and what a human needs to
+# run if not. Meant for agents/scripts that find a credential missing — they
+# can't answer 1Password's prompt, so the answer is always "ask the user to run
+# `login-all` in an interactive terminal". Exit 0 = everything fresh, 1 = not.
+ttl="${DOTFILES_CACHE_TTL:-$(( {{ .credential_cache_hours }} * 3600 ))}"
+rc=0
+
+mtime() { stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null; }
+
+# check <label> <file> <login command>
+check() {
+  local age left
+  if [ ! -f "$2" ]; then
+    echo "MISSING  $1 — absent or expired; ask the user to run: $3"
+    rc=1
+    return
+  fi
+  age=$(( $(date +%s) - $(mtime "$2") ))
+  left=$(( ttl - age ))
+  if [ "$left" -le 0 ]; then
+    echo "EXPIRED  $1 — ask the user to run: $3"
+    rc=1
+  else
+    echo "ok       $1 — $(( left / 60 )) min left"
+  fi
+}
+
+check "1Password env vars (GH_TOKEN, ...)" "$HOME/.cache/op-env-cache" "op-login"
+check "AWS credentials" "$HOME/.cache/aws-login-cache" "aws-login <profile>"
+if SSH_AUTH_SOCK="$HOME/.ssh/local-agent.sock" ssh-add -l >/dev/null 2>&1; then
+  echo "ok       SSH keys in local agent"
+else
+  echo "MISSING  SSH keys in local agent (falls back to the 1Password agent) — ask the user to run: ssh-login"
+  rc=1
+fi
+[ "$rc" -ne 0 ] && echo "All of the above at once, in an interactive terminal: login-all"
+exit "$rc"

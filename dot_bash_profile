@@ -1,0 +1,9 @@
+# Managed by chezmoi — edit dot_bash_profile in the dotfiles source repo, not
+# this file directly.
+#
+# Login bash (`bash -l`, `bash --login -c`). Having a ~/.bash_profile means
+# bash no longer falls through to ~/.profile on its own, so chain to it (and
+# thereby to Ubuntu's stock ~/.bashrc include) explicitly after loading the
+# shared env.
+[ -f "$HOME/.config/dotfiles/env.sh" ] && . "$HOME/.config/dotfiles/env.sh"
+[ -f "$HOME/.profile" ] && . "$HOME/.profile"
