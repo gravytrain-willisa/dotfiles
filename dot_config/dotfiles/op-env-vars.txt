@@ -7,6 +7,9 @@
 # The item/field must already exist in 1Password, as an item of type "API Credentials",
 # — this file only maps a reference to an env var name, it doesn't create anything.
 
+# Advanced Custom Fields Pro
+ACF_PRO_LICENSE_KEY op://GT Digital/ACF Pro Licence Key/credential
+
 # Anthropic/ Claude
 #ANTHROPIC_API_KEY op://Private/Anthropic API Key/credential
 
@@ -20,8 +23,8 @@ GH_TOKEN op://Private/GitHub PAT/credential
 SNYK_TOKEN op://Private/Snyk API Key/credential
 SNYK_CFG_ORG op://Private/Snyk API Key/org id
 
-# Advanced Custom Fields Pro
-ACF_PRO_LICENSE_KEY op://GT Digital/ACF Pro Licence Key/credential
+# Tempo API Key
+TEMPO_API_KEY op://GT Digital/Tempo API Key/credential
 
 # The7 Classic
 THE7_CLASSIC_PURCHASE_CODE op://Client-Bedford/The7 Classic Purchase Code/credential
