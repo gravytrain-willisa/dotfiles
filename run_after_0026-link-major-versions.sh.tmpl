@@ -1,0 +1,7 @@
+#!/bin/bash
+# Runs on every apply (not run_onchange_: installed patch versions change
+# without any manifest changing). Refreshes the "latest of major N" symlinks
+# for Node/Python/Java — see dot_local/bin/executable_link-major-versions.
+set -eu
+
+"$HOME/.local/bin/link-major-versions" || echo "link-major-versions failed (non-fatal)" >&2

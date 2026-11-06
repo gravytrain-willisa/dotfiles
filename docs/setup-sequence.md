@@ -1570,6 +1570,26 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     "Everything must work in interactive AND non-interactive shells" in
     [CLAUDE.md](../CLAUDE.md).
 
+30. **Major-version symlinks (Node/Python/Java)** —
+    [`run_after_0026-link-major-versions.sh.tmpl`](../run_after_0026-link-major-versions.sh.tmpl)
+    runs `~/.local/bin/link-major-versions`
+    ([`dot_local/bin/executable_link-major-versions`](../dot_local/bin/executable_link-major-versions))
+    on **every** apply. nvm, pyenv and SDKMAN only ever expose exact
+    versions (SDKMAN's `current` is the default, not a per-major link), so
+    this creates `~/.local/share/dotfiles/versions/node/24`,
+    `.../python/3.14` and `.../java/21`, each pointing at the newest
+    installed patch of that major. Use them for IDE SDK paths, Maven
+    toolchains or scripts that shouldn't change on every patch bump. The
+    links sit in their own directory, never inside the tools' own, so the
+    version managers don't list them as extra versions. It's `run_after_`
+    rather than `run_onchange_` because installed patch versions change
+    (`update-node`, `update-all`) without any manifest changing; `update-all`
+    also calls it directly. Python's "major" is major.minor (`3.14`). For
+    Java, if several vendors share a major, the `default` line in
+    `sdkman-packages.txt` wins for that major, otherwise the highest. Links
+    whose target was uninstalled are removed; nothing outside the links dir
+    is touched.
+
 ## Manifest conventions
 
 Each numbered manifest (`*.txt`) is a plain newline-delimited list — blank

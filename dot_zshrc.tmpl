@@ -721,6 +721,10 @@ update-all() {
   echo "==> sdk selfupdate && sdk update" >&2
   sdk selfupdate && sdk update
 
+  # Re-point the node/python/java "latest of major N" links at whatever the
+  # steps above just installed.
+  link-major-versions
+
 {{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
   # Windows-native binaries installed via winget.exe (see
   # run_once_0015-install-aws-vault.sh.tmpl and
@@ -998,6 +1002,7 @@ Updates/maintenance:
   update-all                        Update chezmoi, Homebrew/Linuxbrew, apt (Linux/ WSL only), SDKMAN, Node patch versions, npm globals, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only).
   update-jrebel                     Update just the JRebel agent (WSL only).
   update-node [--all]               Install the newest patch of the default Node version (--all: every version in nvm-versions.txt), carrying over npm globals and pinning `nvm alias default` to it.
+  link-major-versions               Refresh ~/.local/share/dotfiles/versions/{node,python,java}/<major> symlinks to the newest installed patch (also runs on every chezmoi apply and update-all).
   docker-update-images              Re-pull the current tag of every locally present Docker image.
   docker-prune-all                  Prune all docker data except for images (alias for `docker system prune --volumes -f`).
   delete-zone-identifiers           Delete every Windows `*:Zone.Identifier` file under the current directory (WSL only).
