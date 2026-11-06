@@ -1,0 +1,71 @@
+#!/bin/bash
+# link-major-versions — keep "latest installed of major N" symlinks for the
+# version managers that don't make any themselves (nvm, pyenv, SDKMAN):
+#
+#   ~/.local/share/dotfiles/versions/node/24    -> ~/.nvm/versions/node/v24.22.2
+#   ~/.local/share/dotfiles/versions/python/3.14 -> ~/.pyenv/versions/3.14.7
+#   ~/.local/share/dotfiles/versions/java/21    -> ~/.sdkman/candidates/java/21.0.12-amzn
+#
+# Stable paths for IDE SDK settings, Maven toolchains, scripts, etc. that
+# shouldn't change on every patch bump. Links live in their own directory,
+# never inside the tools' own, so nvm/pyenv/SDKMAN never see them as extra
+# installed versions. Idempotent; safe to run any time (`chezmoi apply` and
+# `update-all` both do). Only ever touches links inside the versions dir.
+# A real executable (not a shell function) so scripts/agents can call it.
+# bash 3.2-safe: no associative arrays, no `sort -V`.
+set -eu
+
+DEST="${DOTFILES_VERSION_LINKS:-$HOME/.local/share/dotfiles/versions}"
+SDKMAN_DIR="${SDKMAN_DIR:-$HOME/.sdkman}"
+PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}"
+NVM_DIR="${NVM_DIR:-$HOME/.nvm}"
+
+# link_tool <tool> <installs dir> <components in the "major" key>
+# Links the highest installed version of each major (ascending order, so the
+# last `ln -sfn` per key wins), then drops links whose target is gone.
+link_tool() {
+  tool="$1"; src="$2"; depth="$3"
+  [ -d "$src" ] || return 0
+  mkdir -p "$DEST/$tool"
+
+  for name in $(ls "$src"); do
+    [ "$name" = "current" ] && continue
+    [ -d "$src/$name" ] || continue
+    num="${name#v}"
+    case "$num" in [0-9]*) ;; *) continue ;; esac
+    num="$(printf '%s' "$num" | sed 's/[^0-9.].*//')"
+    printf '%s %s\n' "$num" "$name"
+  done \
+  | awk '{ n = split($1, p, "."); k = "";
+           for (i = 1; i <= 4; i++) k = k sprintf("%06d", (i <= n ? p[i] : 0));
+           print k, $1, $2 }' \
+  | sort \
+  | while read -r _ num name; do
+      key="$(printf '%s' "$num" | cut -d. -f1-"$depth")"
+      ln -sfn "$src/$name" "$DEST/$tool/$key"
+    done
+
+  # Stale: major no longer installed anywhere.
+  for l in "$DEST/$tool"/*; do
+    [ -L "$l" ] && [ ! -e "$l" ] && rm -f "$l"
+  done
+  return 0
+}
+
+link_tool node   "$NVM_DIR/versions/node"            1
+link_tool python "$PYENV_ROOT/versions"              2
+link_tool java   "$SDKMAN_DIR/candidates/java"       1
+
+# Java: several vendors can share a major (21.0.12-amzn vs 21.0.5-tem). The
+# manifest's `default` line wins for its own major over "highest wins" above.
+manifest="$HOME/.config/dotfiles/sdkman-packages.txt"
+if [ -f "$manifest" ]; then
+  while read -r cand ver mark _; do
+    [ "$cand" = "java" ] && [ "${mark:-}" = "default" ] || continue
+    [ -d "$SDKMAN_DIR/candidates/java/$ver" ] || continue
+    major="${ver%%.*}"
+    ln -sfn "$SDKMAN_DIR/candidates/java/$ver" "$DEST/java/$major"
+  done < "$manifest"
+fi
+
+exit 0

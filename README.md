@@ -131,6 +131,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | `chezmoi update` | `git pull` the source dir *then* `chezmoi apply` — use this, not plain `apply`, to pick up changes made/pushed since the source dir was last cloned |
 | `update-all` | Update chezmoi, brew/apt, Node patch versions, npm globals, SDKMAN metadata, the winget-installed Windows CLIs (WSL only), and the JRebel agent (WSL only) in one go (runs `chezmoi update`, so it also pulls) |
 | `update-node [--all]` | Install the newest patch of the default Node version (`--all`: every version in `nvm-versions.txt`), carrying over its global npm packages and pinning `nvm alias default` to the exact patch. `nvm install 24` alone never upgrades an installed 24.x |
+| `link-major-versions` | Refresh the `~/.local/share/dotfiles/versions/{node,python,java}/<major>` symlinks (e.g. `node/24` → newest installed 24.x). nvm/pyenv/SDKMAN make no such link themselves. Runs automatically on every `chezmoi apply` and in `update-all` |
 | `update-jrebel` | Update just the JRebel agent (WSL only), without the rest of `update-all` |
 | `op-login [--refresh]` | Export 1Password-backed env vars (`op-env-vars.txt`) into this shell; result is cached across shells for `credential_cache_hours`, `--refresh` re-queries |
 | `aws-login [--refresh] <profile>` | Export AWS credentials for `<profile>` (12h); also refreshes CodeArtifact + ECR auth. Cached across shells for `credential_cache_hours`; `--refresh` re-authorizes |
@@ -563,6 +564,7 @@ Utility scripts -> target files
     -> ~/.local/bin/connect-to-aws-jump-server.sh
   dot_local/bin/executable_git-ssh-with-agent.tmpl
     -> ~/.local/bin/git-ssh-with-agent (used via dot_gitconfig.tmpl's core.sshCommand)
+  dot_local/bin/executable_link-major-versions -> ~/.local/bin/link-major-versions
 
 Install scripts, in execution order (see docs/setup-sequence.md)
   run_once_before_0000-configure-sudo-timeout.sh.tmpl  (runs first)
@@ -591,6 +593,7 @@ Install scripts, in execution order (see docs/setup-sequence.md)
   run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl (WSL only)
   run_once_0024-install-jrebel-agent.sh.tmpl            (WSL only)
   run_onchange_0025-fetch-git-signing-key.sh.tmpl       (needs 1Password CLI; warns, doesn't fail, if unavailable)
+  run_after_0026-link-major-versions.sh.tmpl            (every apply: node/python/java major-version symlinks)
 ```
 
 ## WSL2 disk space management (Windows side, manual)
