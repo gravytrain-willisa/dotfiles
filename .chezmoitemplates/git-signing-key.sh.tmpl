@@ -35,7 +35,7 @@ git-signing-key-refresh() {
   command -v op.exe >/dev/null 2>&1 && op_bin=op.exe
   mkdir -p "$HOME/.cache"
   # CRLF stripped: op.exe is a Windows binary and ends its output with \r\n.
-  key="$("$op_bin" read "{{ .git.signing_key_ref }}" 2>"$HOME/.cache/git-signing-key.err" | tr -d '\r')"
+  key="$("$op_bin"{{ if (index . "1password").op_account_id }} --account "{{ (index . "1password").op_account_id }}"{{ end }} read "{{ .git.signing_key_ref }}" 2>"$HOME/.cache/git-signing-key.err" | tr -d '\r')"
   case "$key" in
   ssh-*|ecdsa-*|sk-*) ;;
   *)
