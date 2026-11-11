@@ -12,4 +12,15 @@ if ! command -v op.exe >/dev/null 2>&1; then
   echo "op: op.exe not found on PATH (is Windows interop enabled, and is 1Password CLI installed via winget?)" >&2
   exit 127
 fi
+{{- if (index . "1password").op_account_id }}
+# Pin to the configured account (1password.op_account_id). WSL doesn't forward
+# env vars to Windows processes unless listed in WSLENV, so add OP_ACCOUNT
+# there; an OP_ACCOUNT already set by the caller wins.
+OP_ACCOUNT="${OP_ACCOUNT:-{{ (index . "1password").op_account_id }}}"
+export OP_ACCOUNT
+case ":${WSLENV:-}:" in
+*:OP_ACCOUNT:*) ;;
+*) WSLENV="${WSLENV:+$WSLENV:}OP_ACCOUNT"; export WSLENV ;;
+esac
+{{- end }}
 exec op.exe "$@"

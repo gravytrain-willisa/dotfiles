@@ -37,7 +37,11 @@ credential_cache_hours: 4
 # list --format=json` once to find your values (see README, "aws-vault env
 # vars"); dot_zshrc.tmpl only exports these on macOS when set (WSL sets its
 # own copies as persistent Windows env vars instead — see
-# docs/setup-sequence.md item 17). Key is quoted/accessed via `index` in
+# docs/setup-sequence.md item 17). `op_account_id` ALSO pins the `op` CLI
+# itself to that account (OP_ACCOUNT in env.sh, forwarded to op.exe by the
+# ~/.local/bin/op wrapper via WSLENV) — needed once several 1Password
+# accounts are signed in, so `op-login`/`ssh-login`/signing-key reads (and
+# the vault names in their manifests) resolve in the right one. Key is quoted/accessed via `index` in
 # templates since Go templates can't dot into a field name starting with a
 # digit.
 "1password":

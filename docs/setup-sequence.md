@@ -660,6 +660,19 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     then `chezmoi apply` and open a new terminal — a `chezmoi apply` in the
     same window doesn't refresh the current shell's environment either.
 
+    **Multiple 1Password accounts.** `op_account_id` doesn't only feed
+    aws-vault: it also pins the `op` CLI itself, so `op-login`, `ssh-login`
+    and `git-signing-key-refresh` (and the vaults named in
+    `op-env-vars.txt`/`ssh-keys.txt`/`git.signing_key_ref`) always resolve
+    in that account rather than whichever one `op` picks by default.
+    `dot_config/dotfiles/env.sh.tmpl` exports `OP_ACCOUNT` (the CLI's
+    default `--account`) for every shell; on WSL the `~/.local/bin/op`
+    wrapper (`executable_op.tmpl`) sets it and lists it in `WSLENV` so it
+    reaches `op.exe` (WSL forwards nothing otherwise), and
+    `git-signing-key-refresh` passes `--account` explicitly since it can
+    call `op.exe` directly. An `OP_ACCOUNT` already set by the caller wins
+    over the config value in the wrapper. Blank `op_account_id` = no pinning.
+
     After setting all three (**new terminal window required**), the first
     `aws-vault` command that touches 1Password (e.g. `aws-vault add
     my-profile --backend=op-desktop`) pops a Windows Hello / 1Password
