@@ -23,8 +23,21 @@ GH_TOKEN op://Private/GitHub PAT/credential
 SNYK_TOKEN op://Private/Snyk API Key/credential
 SNYK_CFG_ORG op://Private/Snyk API Key/org id
 
+# Claude 1Password service account (read-only on the "AI Skills Access"
+# vault). Deliberately NOT named OP_SERVICE_ACCOUNT_TOKEN: `op` switches to
+# the service account whenever that's set, which would lock every other op
+# call out of Private/GT Digital. Skills pass it per command instead:
+#   OP_SERVICE_ACCOUNT_TOKEN="$CLAUDE_OP_SERVICE_ACCOUNT_TOKEN" op read "op://AI Skills Access/..."
+CLAUDE_OP_SERVICE_ACCOUNT_TOKEN op://GT Digital/Service Account Auth Token - Claude/credential
+
 # Tempo API Key
-TEMPO_API_KEY op://GT Digital/Tempo API Key/credential
+TEMPO_API_KEY op://AI Skills Access/Tempo API Key/credential
+
+# Atlassian "API User" service account, for the Jira REST API (scoped token,
+# its @serviceaccount.atlassian.com email, and the <site> in <site>.atlassian.net)
+ATLASSIAN_API_KEY op://AI Skills Access/Atlassian API Key/credential
+ATLASSIAN_EMAIL op://AI Skills Access/Atlassian API Key/username
+ATLASSIAN_SITE op://AI Skills Access/Atlassian API Key/site
 
 # The7 Classic
 THE7_CLASSIC_PURCHASE_CODE op://Client-Bedford/The7 Classic Purchase Code/credential

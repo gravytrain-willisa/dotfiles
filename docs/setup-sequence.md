@@ -846,6 +846,31 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     authenticate `gh` non-interactively once `op-login` has run. Without it,
     authenticating `gh` is entirely on you — nothing here runs or checks it.
 
+    **Claude's 1Password service account (`AI Skills Access` vault).**
+    Secrets that Claude Code skills need (the Tempo and Atlassian API keys
+    used by the `gt-quotesearcher` plugin, for now) live in a dedicated
+    `AI Skills Access` vault. A `Claude` 1Password service account has
+    read-only access to it, and nothing else. Its token is the
+    `Service Account Auth Token - Claude` item in `GT Digital`. There's no
+    `:` in that name because 1Password secret references reject it.
+    `op-env-vars.txt` exports the token as `CLAUDE_OP_SERVICE_ACCOUNT_TOKEN`,
+    deliberately **not** as `OP_SERVICE_ACCOUNT_TOKEN`. The `op` CLI
+    switches to a service account whenever that variable is set, so
+    exporting it globally would lock every other `op` call (`op-login
+    --refresh`, `ssh-login`, …) out of `Private`/`GT Digital`. A skill passes
+    it for a single command instead, so it can read the vault without a
+    1Password prompt:
+    ```bash
+    OP_SERVICE_ACCOUNT_TOKEN="$CLAUDE_OP_SERVICE_ACCOUNT_TOKEN" op read "op://AI Skills Access/Tempo API Key/credential"
+    ```
+    On WSL, the `~/.local/bin/op` wrapper adds `OP_SERVICE_ACCOUNT_TOKEN` to
+    `WSLENV` when it's set, so it reaches `op.exe`. In that mode the wrapper
+    also skips the `OP_ACCOUNT` pin, because the token already decides the
+    account. `op-login` also exports the vault's keys directly
+    (`TEMPO_API_KEY`, `ATLASSIAN_*`), so the service account route is only
+    a fallback for skills. It shares `op-login`'s cache TTL, so once the
+    cache expires it needs `op-login` again like everything else.
+
     **WSL vs macOS.** Same signed-binary story as `aws-vault` above: a
     relayed `op` CLI (over the SSH-agent socat/npiperelay relay) would be
     rejected by 1Password desktop's Authenticode check, so on WSL
