@@ -12,6 +12,21 @@ if ! command -v op.exe >/dev/null 2>&1; then
   echo "op: op.exe not found on PATH (is Windows interop enabled, and is 1Password CLI installed via winget?)" >&2
   exit 127
 fi
+# Service account mode: a caller that sets OP_SERVICE_ACCOUNT_TOKEN for one
+# command (e.g. `OP_SERVICE_ACCOUNT_TOKEN="$CLAUDE_OP_SERVICE_ACCOUNT_TOKEN" op
+# read ...`) wants op.exe to authenticate as that service account, with no
+# desktop-app prompt. WSL doesn't forward env vars to Windows processes unless
+# they're listed in WSLENV, so add it there. The token already picks the
+# account, so the OP_ACCOUNT pin below is skipped (and cleared).
+if [ -n "${OP_SERVICE_ACCOUNT_TOKEN:-}" ]; then
+  unset OP_ACCOUNT
+  export OP_SERVICE_ACCOUNT_TOKEN
+  case ":${WSLENV:-}:" in
+  *:OP_SERVICE_ACCOUNT_TOKEN:*) ;;
+  *) WSLENV="${WSLENV:+$WSLENV:}OP_SERVICE_ACCOUNT_TOKEN"; export WSLENV ;;
+  esac
+  exec op.exe "$@"
+fi
 {{- if (index . "1password").op_account_id }}
 # Pin to the configured account (1password.op_account_id). WSL doesn't forward
 # env vars to Windows processes unless listed in WSLENV, so add OP_ACCOUNT

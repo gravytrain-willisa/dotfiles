@@ -118,6 +118,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | Step | Action |
 |---|---|
 | `op-login` API keys | Create 1Password items for Anthropic/OpenAI/Snyk (or whatever you add to `op-env-vars.txt`) (item 18, "Env vars from 1Password") |
+| Claude skills' secrets | Put skill API keys (Tempo, Atlassian) in the `AI Skills Access` vault, and the `Claude` service account's token in `GT Digital/Service Account Auth Token - Claude`. `op-login` exports it as `CLAUDE_OP_SERVICE_ACCOUNT_TOKEN` (item 18, "Claude's 1Password service account") |
 | `ssh-login` key | Add the `op://…/private key` reference of your 1Password SSH Key item (the one matching `git.signing_key_ref`) to [`ssh-keys.txt`](dot_config/dotfiles/ssh-keys.txt), then `ssh-login` (item 15, "1Password SSH agent relay") |
 | Git commit signing | Set `git.signing_key_ref` in `.chezmoidata/dotfiles.yaml` to the `op://…/public key` reference of your SSH Key item; the public key is then fetched automatically (items 23 and 29). Also add it to GitHub as a Signing Key |
 
