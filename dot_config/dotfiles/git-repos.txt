@@ -2,7 +2,7 @@
 # not just GitHub's shorthand, so this also supports other hosts (GitLab,
 # Bitbucket, a self-hosted server) on the same list. Blank lines and lines
 # starting with # are ignored. Auth for any host goes through the same
-# 1Password SSH agent relay (see README, "1Password as SSH vault") — no
+# 1Password SSH agent (see README, "1Password as SSH vault") — no
 # per-host config needed.
 
 git@github.com:gravytrain-willisa/dotfiles.git

@@ -20,8 +20,7 @@ set -euo pipefail
 # WSL instance actually boots with systemd as PID 1 (opt-in via
 # `systemd=true` in /etc/wsl.conf). Skip quietly rather than fail the whole
 # apply when it isn't — same "systemd on WSL2 is best-effort, never a hard
-# dependency" precedent as run_onchange_0020's SSH-agent-relay unit and
-# run_once_before_0000's sudo-timeout backstop.
+# dependency" precedent as run_once_before_0000's sudo-timeout backstop.
 if [ ! -d /run/systemd/system ]; then
   echo "systemd is not running as PID 1 — skipping hourly /tmp cleanup timer" >&2
   exit 0

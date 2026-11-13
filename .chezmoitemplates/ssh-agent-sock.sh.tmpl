@@ -1,5 +1,4 @@
-{{/* Reusable snippet: point SSH_AUTH_SOCK at the 1Password SSH agent, first
-     starting the WSL2 named-pipe relay if it isn't already up.
+{{/* Reusable snippet: point SSH_AUTH_SOCK at the 1Password SSH agent, on WSL2 falling back to Windows' signed OpenSSH binaries (no relay).
 
      Included via {{ template "ssh-agent-sock.sh.tmpl" . }} — by dot_zshrc.tmpl
      (so interactive shells get an agent) and by any run_* script that needs
@@ -9,62 +8,42 @@
      sourced and a script that assumed it had been reaches `git clone` with no
      agent at all. */ -}}
 {{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
-# WSL2 can't reach 1Password's Windows named pipe directly, so socat +
-# npiperelay (installed by run_once_0014-install-1password-ssh-relay.sh.tmpl)
-# relay it into a Unix socket here. Requires 1Password's SSH agent enabled
-# on the Windows side first (Settings -> Developer -> "Use the SSH Agent").
-export SSH_AUTH_SOCK="$HOME/.1password/agent.sock"
-# A socket file surviving a dead relay (WSL restart, npiperelay/socat
-# crash) still passes `-S`, so a liveness probe is needed on top of the
-# existence check — otherwise every new shell sees "socket exists" and
-# never respawns the relay, and ssh silently fails with "Connection
-# refused" until someone notices and deletes the file by hand.
-if [ -S "$SSH_AUTH_SOCK" ] && ! socat -u OPEN:/dev/null UNIX-CONNECT:"$SSH_AUTH_SOCK" >/dev/null 2>&1; then
-  rm -f "$SSH_AUTH_SOCK"
-fi
-if [ ! -S "$SSH_AUTH_SOCK" ]; then
-  # dot_config/systemd/user/ssh-agent-relay.service (once installed by
-  # run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl) is the one
-  # true owner of this relay from here on — restarting it, rather than
-  # spawning a second setsid-detached socat of our own, is what actually
-  # fixes a dead socket. Two relays racing to open the same Windows named
-  # pipe is not harmless: 1Password's pipe only tolerates a small number of
-  # concurrent instances, and a leftover manually-spawned relay from before
-  # this unit existed once made every *other* connection (including a
-  # freshly-opened IDE's) fail with "All pipe instances are busy" until the
-  # stray process was killed by hand. Only fall back to spawning our own
-  # (the original behavior) when the unit genuinely isn't installed yet —
-  # early in a first-ever apply, before run_onchange_0020 has ever run.
-  if systemctl --user cat ssh-agent-relay.service >/dev/null 2>&1; then
-    systemctl --user restart ssh-agent-relay.service >/dev/null 2>&1
-  elif [ -x "$HOME/.local/bin/npiperelay.exe" ]; then
-    mkdir -p "$(dirname "$SSH_AUTH_SOCK")"
-    (setsid socat UNIX-LISTEN:"$SSH_AUTH_SOCK",fork \
-      EXEC:"$HOME/.local/bin/npiperelay.exe -ei -s //./pipe/openssh-ssh-agent",nofork &) >/dev/null 2>&1
-  fi
-  # socat backgrounds immediately but takes a moment to create the socket, so
-  # whatever runs next would otherwise race it and see "no such file". Only
-  # reached on a cold start (once per WSL boot), not on every shell.
-  for _ in 1 2 3 4 5 6 7 8 9 10; do
-    [ -S "$SSH_AUTH_SOCK" ] && break
-    sleep 0.2
-  done
+# WSL2 can't reach 1Password's Windows named pipe from Linux, and the
+# socat/npiperelay bridge that used to cover that is an unsigned binary that
+# Smart App Control / Code Integrity (event 3077) refuses to run. So there is
+# no relay and no 1Password socket here: the Linux side only ever uses the
+# local ssh-agent that `ssh-login` loads keys into. When that agent holds no
+# key, DOTFILES_WIN_OPENSSH is set to the directory of Microsoft's own signed
+# OpenSSH binaries, and the git wrappers (and run_* scripts) call
+# ssh.exe/ssh-add.exe/ssh-keygen.exe from there instead — those talk to
+# 1Password's agent pipe natively. Requires 1Password's SSH agent enabled on
+# the Windows side (Settings -> Developer -> "Use the SSH Agent") and the
+# Windows `ssh-agent` service stopped/disabled so it doesn't own the pipe.
+# Not exported on purpose: only this shell/script (or whichever wrapper
+# includes this snippet itself) needs it.
+DOTFILES_SSH_AGENT_MANAGED=1
+DOTFILES_LOCAL_AGENT_SOCK="$HOME/.ssh/local-agent.sock"
+if SSH_AUTH_SOCK="$DOTFILES_LOCAL_AGENT_SOCK" ssh-add -l >/dev/null 2>&1; then
+  export SSH_AUTH_SOCK="$DOTFILES_LOCAL_AGENT_SOCK"
+  DOTFILES_WIN_OPENSSH=""
+else
+  # Don't leave a stale SSH_AUTH_SOCK behind (e.g. the old relay's path from
+  # /etc/environment): Linux ssh would only fail against it.
+  unset SSH_AUTH_SOCK
+  DOTFILES_WIN_OPENSSH="/mnt/c/Windows/System32/OpenSSH"
+  [ -x "$DOTFILES_WIN_OPENSSH/ssh.exe" ] || DOTFILES_WIN_OPENSSH=""
 fi
 {{- else if eq .chezmoi.os "darwin" }}
 # 1Password exposes a Unix socket directly on macOS — no relay needed, just
 # needs the same "Use the SSH Agent" toggle switched on.
 export SSH_AUTH_SOCK="$HOME/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
-{{- end }}
-{{- if or (and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower))) (eq .chezmoi.os "darwin") }}
 # Prefer the local ssh-agent that `ssh-login` (dot_zshrc.tmpl) loads keys
-# into, whenever it's up and actually holds one: the 1Password agent above
-# re-prompts for every connection on WSL (the relay makes each look like a
-# new app), which a long-lived local agent avoids. Once its keys expire
-# (ssh-add -t) or it's gone, this simply leaves the 1Password socket in
-# place. The 1Password path is remembered for dot_zshrc.tmpl's
-# _ssh_select_agent prompt hook, which flips between the two in an
-# already-running shell. POSIX sh only — this also runs in the macOS
-# bash 3.2 run_* scripts and the git wrappers.
+# into, whenever it's up and actually holds one; otherwise leave the
+# 1Password socket in place. The 1Password path is remembered for
+# dot_zshrc.tmpl's _ssh_select_agent prompt hook, which flips between the
+# two in an already-running shell. POSIX sh only — this also runs in the
+# macOS bash 3.2 run_* scripts and the git wrappers.
+DOTFILES_SSH_AGENT_MANAGED=1
 DOTFILES_1P_SSH_AUTH_SOCK="$SSH_AUTH_SOCK"
 if SSH_AUTH_SOCK="$HOME/.ssh/local-agent.sock" ssh-add -l >/dev/null 2>&1; then
   export SSH_AUTH_SOCK="$HOME/.ssh/local-agent.sock"

@@ -2,8 +2,8 @@
 {{- if eq .chezmoi.os "linux" }}
 # A first-ever `chezmoi apply` needs sudo in several separate scripts — zsh,
 # Homebrew's apt prerequisites, `unzip` for SDKMAN, pyenv's build deps,
-# `socat`, registering the SSH agent relay's SSH_AUTH_SOCK in
-# /etc/environment, and `chsh` at the handoff — and a plain raised sudo
+# and `chsh` at the handoff (the `socat` install and /etc/environment write
+# for the retired SSH agent relay are still allowlisted below but unused) — and a plain raised sudo
 # timestamp_timeout turned out not to be reliable here (see below), so this
 # grants passwordless sudo for exactly those commands instead: no cached
 # credential to expire, no tty/session/process-group games to get wrong.
@@ -29,8 +29,8 @@
 # A background timer sounds like the fix, but doesn't hold up: a systemd
 # transient unit needs systemd actually running as PID 1, which isn't
 # guaranteed on WSL2 (opt-in via `systemd=true` in /etc/wsl.conf, and this
-# repo has never required it — the persistent SSH-relay service in
-# run_onchange_0020 already treats systemd as best-effort, not a hard
+# repo has never required it — the hourly /tmp cleanup timer in
+# run_onchange_0023 already treats systemd as best-effort, not a hard
 # dependency), doesn't survive a `wsl --shutdown`/reboot before it fires
 # (transient units are runtime-only), and scheduling it with `set -e` still
 # active would abort this entire script — and thus the whole apply, on the

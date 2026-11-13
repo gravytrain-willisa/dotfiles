@@ -1,0 +1,28 @@
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) -}}
+#!/bin/bash
+# Retires the old WSL2 <-> 1Password SSH agent relay (socat + npiperelay.exe,
+# run as a systemd --user unit) on machines that had it installed.
+#
+# Why it's gone: npiperelay.exe is unsigned, and Windows Smart App Control /
+# Code Integrity refuses to run it (event 3077, "did not meet the Enterprise
+# signing level") — so the unit just crash-looped. SSH now goes through the
+# local ssh-agent that `ssh-login` loads, or Microsoft's signed ssh.exe /
+# ssh-keygen.exe against 1Password's agent pipe; see
+# .chezmoitemplates/ssh-agent-sock.sh.tmpl.
+#
+# Narrowly scoped: removes only this repo's own unit file and the one binary
+# it downloaded. It does not touch socat (apt-installed, generally useful)
+# or the `SSH_AUTH_SOCK=` line a previous apply wrote to /etc/environment —
+# that path is now simply dead, and ssh-agent-sock.sh.tmpl unsets it.
+#
+# Runs once per machine (run_onchange, no manifest to hash): a fresh machine
+# never had any of this, so every step below is a harmless no-op there.
+set -uo pipefail
+
+systemctl --user disable --now ssh-agent-relay.service >/dev/null 2>&1 || true
+rm -f "$HOME/.config/systemd/user/ssh-agent-relay.service" \
+      "$HOME/.local/bin/npiperelay.exe" \
+      "$HOME/.1password/agent.sock"
+rmdir "$HOME/.1password" 2>/dev/null || true
+systemctl --user daemon-reload >/dev/null 2>&1 || true
+{{- end }}

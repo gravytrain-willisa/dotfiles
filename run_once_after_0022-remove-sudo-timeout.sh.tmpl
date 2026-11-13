@@ -4,7 +4,7 @@
 # run_once_before_0000-configure-sudo-timeout.sh.tmpl. That drop-in exists
 # only to get through this repo's own one-time bootstrap scripts (zsh
 # install, Homebrew's apt prerequisites, SDKMAN's `unzip`, pyenv's build
-# deps, `socat`, the SSH_AUTH_SOCK /etc/environment write, and the `chsh`
+# deps, and the `chsh`
 # handoff) without repeated password prompts. Every one of those is a
 # run_once*/run_onchange* step that, by the time this `run_once_after`
 # script runs last, has already either run or been skipped for good — so

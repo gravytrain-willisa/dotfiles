@@ -15,30 +15,28 @@
 # "Couldn't get agent socket? / fatal: failed to write commit object" even
 # though fetch/push already work.
 #
-# Same shared liveness-probe/relay-restart logic as git-ssh-with-agent.
+# Same shared agent selection as git-ssh-with-agent: local ssh-agent when it
+# holds a key, otherwise (WSL) Microsoft's signed ssh-keygen.exe, which signs
+# through 1Password's agent pipe natively.
 {{ template "ssh-agent-sock.sh.tmpl" . }}
 
-# The relay/agent connection is occasionally flaky on its own — a fresh
-# npiperelay pipe instance can take a moment to settle, and retrying
-# `ssh-keygen -Y sign` from scratch is always safe (it's a stateless
-# signing operation with no partial-transfer state to worry about).
-# Confirmed empirically: back-to-back real invocations against a socket
-# that was just reported "live" by the probe above still intermittently
-# fail with "Couldn't find key in agent?"/"communication with agent
-# failed" — a short plain retry clears it up every time in testing,
-# whereas re-running the probe/restart dance per attempt does not (and
-# adds more load to the same limited named-pipe resource). Only fall back
-# to that heavier recovery if plain retries are exhausted.
-attempt=1
-while [ "$attempt" -le 3 ]; do
-  if ssh-keygen "$@"; then
-    exit 0
-  fi
-  attempt=$((attempt + 1))
-  sleep 0.3
-done
-# Still failing after plain retries — the relay itself may genuinely be
-# dead, so pay for the heavier probe/restart-and-wait recovery once more
-# before giving up.
-{{ template "ssh-agent-sock.sh.tmpl" . }}
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+
+# ssh-keygen.exe is a Windows process, so every WSL path argument (the -f
+# key file, the temporary buffer git signs) must be translated to a Windows
+# path first. Only absolute paths are rewritten; flags and values like
+# "git" (-n) or "sign" (-Y) pass through untouched.
+if [ -n "${DOTFILES_WIN_OPENSSH:-}" ]; then
+  for arg in "$@"; do
+    case "$arg" in
+      /*) arg="$(wslpath -w "$arg")" ;;
+    esac
+    set -- "$@" "$arg"
+    shift
+  done
+  # The loop above rotated the args once around in order, so "$@" is the
+  # translated list again.
+  exec "$DOTFILES_WIN_OPENSSH/ssh-keygen.exe" "$@"
+fi
+{{- end }}
 exec ssh-keygen "$@"
