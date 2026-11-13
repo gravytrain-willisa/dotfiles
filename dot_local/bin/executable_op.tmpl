@@ -6,7 +6,7 @@
 # scripts, `bash -c` and agents get it too (functions don't survive into
 # subprocesses). Wraps the winget-installed Windows op.exe: only a genuine
 # Windows process passes 1Password desktop's Authenticode check — a native
-# Linux `op` reached through the socat/npiperelay relay would be rejected.
+# Linux `op` would be rejected.
 # Needs the Windows interop PATH (WSL's default) to find op.exe.
 if ! command -v op.exe >/dev/null 2>&1; then
   echo "op: op.exe not found on PATH (is Windows interop enabled, and is 1Password CLI installed via winget?)" >&2

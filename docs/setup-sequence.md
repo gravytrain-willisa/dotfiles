@@ -20,7 +20,8 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    — deliberately *not* a `apt-get install -y *` wildcard — one exact-match
    line per specific `apt-get install -y ...` invocation actually used
    below: the shell package (step 1), Homebrew's apt prerequisites (3),
-   `unzip zip` for SDKMAN (7), pyenv's build deps (11), and `socat` (15). A
+   `unzip zip` for SDKMAN (7), pyenv's build deps (11), and `socat` (formerly used by the retired SSH
+   relay, step 15; the rule is kept but nothing installs it any more). A
    wildcard there would let anything holding this rule install an arbitrary
    package for the file's whole lifetime — a root-run maintainer script is
    as good as NOPASSWD ALL — so each install this repo actually needs is
@@ -47,11 +48,11 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    fall back to a plain `sudo tee -a /etc/shells` there, prompting
    interactively every time — the helpers only exist on Linux.)
 
-   A first-ever apply needs sudo in seven separate scripts — zsh (step 1),
-   Homebrew's apt prerequisites (3), `unzip` for SDKMAN (7), pyenv's build
-   deps (11), `socat` (15), registering the SSH agent relay's
-   `SSH_AUTH_SOCK` in `/etc/environment` (also 15, for the systemd-based
-   persistent relay), and `chsh` at the handoff (20) — and only this first
+   A first-ever apply needs sudo in a handful of separate scripts — zsh
+   (step 1), Homebrew's apt prerequisites (3), `unzip` for SDKMAN (7),
+   pyenv's build deps (11), and `chsh` at the handoff (20) (the former
+   `socat` install and `/etc/environment` write for the SSH relay are gone,
+   step 15) — and only this first
    script's own `visudo`/`install` calls (installing the drop-in itself)
    still prompt normally, since the rule they install doesn't exist yet to
    cover them. It prints a one-line explanation before that prompt rather
@@ -69,7 +70,7 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
    A background timer sounds like the fix but doesn't hold up in practice:
    a systemd transient unit needs systemd actually running as PID 1, which
    isn't guaranteed on WSL2 (opt-in via `systemd=true` in `/etc/wsl.conf`;
-   even item 15's own persistent SSH-relay service already treats systemd
+   even the tmp-cleanup timer (item 26) already treats systemd
    as best-effort rather than a hard dependency), and a transient unit
    doesn't survive a `wsl --shutdown`/reboot before it fires anyway. A
    plain detached background process has the same reboot-survival gap
@@ -337,7 +338,7 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     Docker not being installed yet and no `aws-login` session are the
     *expected* state on a fresh machine, not transient errors, and chezmoi
     aborts the entire rest of the apply (every later script, including the
-    1Password relay, aws-vault, git clones, and the sudo cleanup step) the
+    aws-vault, git clones, and the sudo cleanup step) the
     moment any one script exits non-zero. So there's no automatic retry for
     this script specifically — on a genuinely fresh machine, install Docker
     Desktop (enable WSL2 integration if on Windows) and/or run `aws-login
@@ -365,115 +366,94 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     skips just the ECR-hosted images with a message telling you to run
     `aws-login <profile>` first and re-apply — non-ECR images (`mysql`,
     `httpd`, etc.) still pull normally either way.
-15. **1Password SSH agent relay (WSL only)** — installs `socat` (apt) and
-    `npiperelay.exe` (downloaded straight from its
-    [GitHub releases](https://github.com/albertony/npiperelay/releases) into
-    `~/.local/bin` — WSL can run a Windows `.exe` from anywhere in its own
-    filesystem via interop, no Windows-visible path needed) via
-    [`run_once_0014-install-1password-ssh-relay.sh.tmpl`](../run_once_0014-install-1password-ssh-relay.sh.tmpl).
-    Scoped to genuine WSL2, not just any Linux — the guard checks
-    `.chezmoi.kernel.osrelease` for `"microsoft"` (present only under WSL2)
-    alongside `.chezmoi.os` — since on bare-metal Linux there's no Windows
-    named pipe to relay from and this would just waste effort.
+15. **1Password SSH agent (no relay)** — SSH keys live in 1Password; this
+    step is about getting an agent in front of `ssh`/`git`.
+    [`.chezmoitemplates/ssh-agent-sock.sh.tmpl`](../.chezmoitemplates/ssh-agent-sock.sh.tmpl)
+    is the single shared snippet (included by `env.sh`, both git wrappers
+    and `run_onchange_0018`, so interactive shells, IDE-launched git and
+    chezmoi's non-interactive bash scripts all agree). Per platform:
+    - **macOS:** points `SSH_AUTH_SOCK` straight at 1Password's own Unix
+      socket.
+    - **WSL2** (guard: `.chezmoi.kernel.osrelease` contains `"microsoft"`):
+      the 1Password agent is a Windows process on a Windows named pipe that
+      Linux can't reach. This repo used to bridge it with `socat` +
+      `npiperelay.exe`, but `npiperelay.exe` is **unsigned**, and Windows
+      Smart App Control (or an App Control/WDAC policy) refuses to run it —
+      Code Integrity event 3077, surfacing in WSL as `Invalid argument` — and
+      Defender exclusions don't help. The relay was therefore removed.
+      Instead, the snippet uses the local `ssh-agent` that `ssh-login`
+      loads when it holds a key, and otherwise sets `DOTFILES_WIN_OPENSSH`
+      (`/mnt/c/Windows/System32/OpenSSH`) so callers run Microsoft's *signed*
+      `ssh.exe`/`ssh-add.exe`/`ssh-keygen.exe`, which talk to 1Password's
+      pipe natively. A stale `SSH_AUTH_SOCK` (e.g. the old relay's path in
+      `/etc/environment`) is unset rather than left to fail.
+    - **Bare-metal Linux:** `SSH_AUTH_SOCK` is left untouched.
 
-    Launching the relay is separate from installing it, and lives in
-    [`.chezmoitemplates/ssh-agent-sock.sh.tmpl`](../.chezmoitemplates/ssh-agent-sock.sh.tmpl):
-    it points `SSH_AUTH_SOCK` at `~/.1password/agent.sock` and, if no socket
-    is listening there yet, starts `socat`/`npiperelay` to bridge 1Password's
-    Windows named pipe into it (then waits briefly for the socket to appear,
-    since `socat` backgrounds before creating it). Same WSL2 guard as above;
-    on macOS it points straight at 1Password's own Unix socket, no relay
-    needed; bare-metal Linux falls through with `SSH_AUTH_SOCK` untouched.
+    The snippet is shared rather than a block inside `dot_zshrc.tmpl`
+    because chezmoi runs `run_*` scripts with **bash, non-interactively** —
+    `~/.zshrc` is never sourced. Step 24 includes it before cloning anything;
+    without it every SSH clone failed with `Permission denied (publickey)`.
 
-    It's a shared snippet rather than a block inside `dot_zshrc.tmpl`
-    specifically because chezmoi runs `run_*` scripts with **bash,
-    non-interactively** — `~/.zshrc` is never sourced, so a script can't
-    assume an interactive shell has already started the relay. On a
-    first-ever apply that's guaranteed to bite: this step only *installs*
-    `socat` and `npiperelay`, and no zsh has existed since. Step 24 therefore
-    includes the same snippet before it clones anything; when it was only in
-    `dot_zshrc.tmpl`, every SSH clone failed with `Permission denied
-    (publickey)`.
+    **Manual steps (Windows).** You still have to, once, by hand:
+    1. 1Password desktop app → Settings → Developer → "Use the SSH Agent" (a
+       GUI toggle with no CLI/file equivalent).
+    2. Make sure the Windows `ssh-agent` service is **Stopped and
+       Disabled** (Windows' default), otherwise it owns the
+       `\\.\pipe\openssh-ssh-agent` pipe instead of 1Password. Check from WSL:
+       ```bash
+       powershell.exe -NoProfile -Command "Get-Service ssh-agent | Format-List Name,Status,StartType"
+       ```
+       If it isn't `Stopped`/`Disabled`, run this in an **Administrator**
+       PowerShell (not possible from a normal WSL shell), then toggle the
+       1Password setting off and on:
+       ```powershell
+       Stop-Service ssh-agent
+       Set-Service ssh-agent -StartupType Disabled
+       ```
+    Verify with `ssh-add.exe -l` (keys held by 1Password) and
+    `ssh.exe -T git@github.com`. First connection to a new host auto-accepts
+    its key rather than hanging (see "`~/.ssh/config`" below), without
+    disabling the check: it still fails loudly if that key later changes.
+    Note `ssh.exe` reads the Windows-side `%USERPROFILE%\.ssh`, not the
+    WSL `~/.ssh/config`, so the git wrapper passes
+    `-o StrictHostKeyChecking=accept-new` itself.
 
-    **This only sets up the plumbing.** You still have to, once, by hand:
-    1Password desktop app → Settings → Developer → "Use the SSH Agent". It's
-    a GUI toggle with no CLI/file equivalent, so nothing here can do it for
-    you. Verify afterwards with `ssh-add -l` (should list keys held by
-    1Password, not local files) and `ssh -T git@github.com` — first
-    connection to a new host auto-accepts its key rather than hanging on an
-    interactive prompt (see "`~/.ssh/config`" below for why), without
-    disabling the check entirely: it still fails loudly if that key ever
-    unexpectedly changes later.
+    **Cleanup of the old relay.**
+    [`run_onchange_0020-remove-ssh-agent-relay.sh.tmpl`](../run_onchange_0020-remove-ssh-agent-relay.sh.tmpl)
+    (WSL only) disables the old `ssh-agent-relay.service` user unit and
+    removes it, `~/.local/bin/npiperelay.exe` and `~/.1password/agent.sock`.
+    It deliberately leaves `socat` installed and the old `SSH_AUTH_SOCK=` line
+    in `/etc/environment` (now just a dead path, unset by the snippet).
 
-    **A persistent copy of the relay, for anything that never sources
-    `~/.zshrc` (WSL only).** The snippet above only starts the relay from an
-    interactive zsh shell (or a `run_*` script that includes it directly) —
-    it's invisible to anything that reaches WSL a different way. IDE git
-    integrations are exactly that case: IntelliJ's WSL support, for example,
-    invokes `/usr/bin/git` directly via `wsl.exe`, with no shell rc involved
-    at all, so `SSH_AUTH_SOCK` was unset and the relay was never started even
-    though a plain terminal in the same WSL instance worked fine.
-    [`dot_config/systemd/user/ssh-agent-relay.service`](../dot_config/systemd/user/ssh-agent-relay.service)
-    (excluded on macOS/bare-metal Linux via `.chezmoiignore`, same WSL2 guard
-    as everywhere else in this step) runs the identical socat/npiperelay
-    command as a `systemd --user` unit instead, and
-    [`run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl`](../run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl)
-    enables it — re-running automatically if the unit file's content ever
-    changes, same manifest/`run_onchange_` pairing as every other step here,
-    just with the unit file itself standing in for the manifest.
+    **IDE-launched git.** IntelliJ's WSL support runs `wsl.exe -d <distro> -e
+    git ...`, which execs straight into git without a login shell or PAM, so
+    neither `~/.zshrc` nor `/etc/environment` is ever read — `wsl.exe -e
+    printenv SSH_AUTH_SOCK` comes back empty. The fix is `core.sshCommand`
+    (step 23): the wrapper re-includes the snippet itself and then
+    `exec`s `ssh` (local agent) or `ssh.exe` (1Password), regardless of how
+    git was launched. `gpg.ssh.program` does the same for commit signing,
+    translating WSL path arguments with `wslpath -w` before calling
+    `ssh-keygen.exe`.
 
-    Two things make this reach processes a shell-only fix can't:
-    - `loginctl enable-linger <user>` keeps the user's systemd manager (and
-      this service with it) running from boot, even if nothing has ever
-      logged in interactively — otherwise `systemd --user` normally only
-      starts on a real login session, which `wsl.exe` invoked straight from
-      an IDE on the Windows side never creates.
-    - `SSH_AUTH_SOCK` is additionally written to `/etc/environment` (via the
-      new `tee -a /etc/environment` NOPASSWD rule in step 0 above) —
-      system-wide, so it's visible to any process, not just ones that source
-      `~/.zshrc`. `/etc/environment` has no variable expansion of its own,
-      so this is the literal resolved path, not `$HOME`-relative.
-
-    A new IDE terminal/process only picks up an `/etc/environment` change on
-    its *next* fresh launch — same "close the window, don't just re-run"
-    caveat as the Windows-side env vars in step 17 below, just on the WSL
-    side this time. Check it's actually active with:
-    ```bash
-    systemctl --user status ssh-agent-relay.service
-    grep SSH_AUTH_SOCK /etc/environment
-    ```
-
-    **This turned out not to be enough for IntelliJ specifically.** Testing
-    showed `wsl.exe -d <distro> -e git ...` — IntelliJ's actual invocation —
-    execs straight into `git` rather than going through a login shell, so it
-    never runs PAM and never reads `/etc/environment` either: `wsl.exe -e
-    printenv SSH_AUTH_SOCK` came back empty even with this relay running and
-    `/etc/environment` correctly set (`wsl.exe -e printenv HOME` returned
-    fine, so it's specifically an env-propagation gap, not a broken `wsl.exe`
-    invocation generally). This service is still worth having for other
-    tools that inherit environment normally, but the fix that actually
-    solves IDE-launched git is `core.sshCommand`, covered in step 23 below.
-    **Repeated prompts, and the local-agent workaround.** Because the relay
-    makes 1Password treat each connection as a different application, its
-    "remember approval" setting never applies and every `ssh`/`git` call
-    prompts. `ssh-login` (in `dot_zshrc.tmpl`) works around it: it starts a
-    plain `ssh-agent` on `~/.ssh/local-agent.sock` and, for each
-    `op://…/private key` reference in
+    **Repeated prompts, and the local-agent workaround.** `ssh.exe` is a new
+    process per connection, so 1Password's "remember approval" never applies
+    and every `ssh`/`git` call prompts. `ssh-login` (in `dot_zshrc.tmpl`)
+    works around it: it starts a plain `ssh-agent` on
+    `~/.ssh/local-agent.sock` and, for each `op://…/private key` reference in
     [`dot_config/dotfiles/ssh-keys.txt`](../dot_config/dotfiles/ssh-keys.txt),
     pipes `op read "<ref>?ssh-format=openssh"` into `ssh-add -t
     <DOTFILES_CACHE_TTL> -` — one prompt per key, the key never touches disk,
     and the agent drops it by itself on expiry. The key must be the one
     matching `git.signing_key_ref` (item 23) or commit signing keeps using
-    1Password. The tail of `.chezmoitemplates/ssh-agent-sock.sh.tmpl` (so
-    the zshrc, both git wrappers and `run_onchange_0018` all get it) then
-    points `SSH_AUTH_SOCK` at the local agent whenever it holds a key, and
-    otherwise leaves the 1Password socket; a `precmd` hook
-    (`_ssh_select_agent`) re-checks before each prompt so open shells switch
-    over after an `ssh-login`, and back after expiry. `ssh-logout` drops the
-    keys. Accepted trade-off: an unencrypted key is readable through the
-    local socket by any process of the same user for the window, weaker than
-    1Password's per-use approval. Not applied on bare-metal Linux, where
-    the repo doesn't manage the agent.
+    1Password. The snippet then points `SSH_AUTH_SOCK` at the local agent
+    whenever it holds a key; a `precmd` hook (`_ssh_select_agent`) re-checks
+    before each prompt so open shells switch over after an `ssh-login`, and
+    back (macOS: to 1Password's socket; WSL: to no socket, so callers use
+    `ssh.exe`) after expiry. `ssh-logout` drops the keys. Accepted
+    trade-off: an unencrypted key is readable through the local socket by any
+    process of the same user for the window, weaker than 1Password's per-use
+    approval. Not applied on bare-metal Linux, where the repo doesn't manage
+    the agent.
 
 16. **`~/.ssh/config`** —
     [`private_dot_ssh/config.tmpl`](../private_dot_ssh/config.tmpl) →
@@ -516,9 +496,9 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     This one genuinely installs a *different binary* per platform, because
     `op-desktop` authenticates the connecting process's identity
     (Authenticode signature on Windows) rather than just trusting whatever
-    connects to a socket — the same relay trick used for SSH would connect
-    as `npiperelay.exe`, which isn't a signed 1Password-aware binary, and
-    would get rejected:
+    connects to a socket — an unsigned relay (the old SSH one was
+    `npiperelay.exe`) isn't a signed 1Password-aware binary and would get
+    rejected:
     - **macOS**: a normal `brew install aws-vault` — no VM boundary to
       cross, `op-desktop` talks to the local 1Password app directly. The
       1Password CLI also needs installing explicitly here (`brew install
@@ -872,7 +852,7 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     cache expires it needs `op-login` again like everything else.
 
     **WSL vs macOS.** Same signed-binary story as `aws-vault` above: a
-    relayed `op` CLI (over the SSH-agent socat/npiperelay relay) would be
+    Linux `op` CLI would be
     rejected by 1Password desktop's Authenticode check, so on WSL
     `op-login` — like `aws-vault` — shells out to the winget-installed
     `op.exe` through WSL interop rather than a Linux `op` binary (no extra
@@ -1120,7 +1100,7 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
       `ControlMaster`/`ControlPersist` connection, because three separate
       ssh/rsync steps back to back (an earlier version of the jars function)
       was observed to fall through to a password prompt instead of
-      authenticating via the 1Password SSH agent relay each time.
+      authenticating via the 1Password SSH agent each time.
 
       The rsync itself passes `--no-perms --no-owner --no-group`: with a
       plain `-a`, running as root (via `sudo rsync`) let it propagate the
@@ -1205,20 +1185,21 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     [`dot_local/bin/executable_git-ssh-with-agent.tmpl`](../dot_local/bin/executable_git-ssh-with-agent.tmpl)
     (→ `~/.local/bin/git-ssh-with-agent`) instead of calling `ssh` directly.
     This is the fix that actually solves an IDE's git integration (IntelliJ,
-    VS Code) getting `Permission denied (publickey)` on WSL — step 15's
-    `systemd --user` relay plus `/etc/environment` covers everything that
-    inherits environment normally, but IntelliJ's WSL support invokes git via
+    VS Code) getting `Permission denied (publickey)` on WSL —
+    `/etc/environment` covers everything that inherits environment
+    normally, but IntelliJ's WSL support invokes git via
     `wsl.exe -d <distro> -e git ...`, which execs straight into `git` rather
     than going through a login shell. That skips PAM entirely, so neither
     `~/.zshrc`'s export nor `/etc/environment` ever reaches that process —
     confirmed empirically: `wsl.exe -e printenv SSH_AUTH_SOCK` came back
-    empty even with the relay active and `/etc/environment` correctly set,
+    empty even with `/etc/environment` correctly set,
     while `wsl.exe -e printenv HOME` returned correctly, isolating the gap to
     environment propagation specifically. `core.sshCommand` sidesteps the
     whole problem: git always calls the wrapper, and the wrapper sets
-    `SSH_AUTH_SOCK` itself — via the same
+    the agent itself — via the same
     [`.chezmoitemplates/ssh-agent-sock.sh.tmpl`](../.chezmoitemplates/ssh-agent-sock.sh.tmpl)
-    snippet steps 15/24 use — then `exec ssh "$@"`, so it works no matter how
+    snippet steps 15/24 use — then `exec`s `ssh` (local agent) or Windows'
+    signed `ssh.exe` (1Password), so it works no matter how
     git itself was launched, without depending on any inherited environment
     at all. Verified by replicating IntelliJ's exact invocation from Windows:
     ```bash
@@ -1341,13 +1322,14 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     Clones over **SSH**, not `gh repo clone` — this deliberately doesn't
     depend on the `gh` CLI being authenticated at all, and wouldn't even
     apply to a non-GitHub host anyway. SSH auth goes through the 1Password SSH agent
-    relay from "1Password as SSH vault" above, which is already required
+    (via Windows' `ssh.exe` on WSL) from "1Password as SSH vault" above, which is already required
     for any git push/pull regardless of host, so cloning works the moment
     that's set up.
 
-    It can't assume that relay is *running*, though, so the script includes
+    It can't assume an agent has been selected, though, so the script includes
     [`.chezmoitemplates/ssh-agent-sock.sh.tmpl`](../.chezmoitemplates/ssh-agent-sock.sh.tmpl)
-    (see step 15) to start it and export `SSH_AUTH_SOCK` itself — chezmoi
+    (see step 15) to pick one (and, on WSL, set `GIT_SSH_COMMAND`/`ssh-add.exe`
+    to the Windows binaries when needed) — chezmoi
     runs scripts with bash, non-interactively, so `~/.zshrc` hasn't run and
     on a first-ever apply no interactive shell has ever existed. Then a
     single `ssh-add -l` preflight, before any directory is created, either
@@ -1484,8 +1466,7 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     cadence). Guarded at runtime on `[ -d /run/systemd/system ]` — skips
     quietly rather than failing the apply if this WSL instance hasn't
     opted into `systemd=true` in `/etc/wsl.conf` — the same "systemd on
-    WSL2 is best-effort" precedent as item 15's SSH-agent-relay unit and
-    item 0's sudo NOPASSWD backstop.
+    WSL2 is best-effort" precedent as item 0's sudo NOPASSWD backstop.
 
     Considered `tmpreaper` (Ubuntu `universe`) as an alternative on the
     premise that it checks for open file handles before deleting — its man
@@ -1525,7 +1506,7 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     a per-developer IDE/JVM tool, not something server images need (mirrors
     `../sysadmin-tools/bin/jrebel-update.sh`, which does the same
     download/extract on servers, but into `/opt` with `sudo` — this install
-    stays user-space instead, matching nvm/pyenv/sdkman/npiperelay elsewhere
+    stays user-space instead, matching nvm/pyenv/sdkman elsewhere
     in this repo). Downloads zeroturnaround's rolling "stable" zip
     (`https://dl.zeroturnaround.com/jrebel-stable-nosetup.zip`), which the
     vendor always keeps pointed at the current stable release — so there's

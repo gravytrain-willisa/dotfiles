@@ -12,8 +12,9 @@
 # deferred for now rather than guessed at. Revisit both together.
 #
 # What's worth setting globally today: every host gets its key checked
-# through the 1Password agent relay (SSH_AUTH_SOCK, set in dot_zshrc.tmpl),
-# so there's no local on-disk key to pin anyway.
+# through an agent (the local `ssh-login` one via SSH_AUTH_SOCK, or on WSL
+# Windows' ssh.exe -> 1Password), so there's no on-disk key to pin anyway.
+# Note Windows' ssh.exe reads %USERPROFILE%\.ssh, not this file.
 Host *
   # Auto-trust a host's key on first connection (adding it to
   # known_hosts), then verify against that stored key on every later

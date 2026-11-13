@@ -12,8 +12,8 @@
 #
 # Clones over SSH, not `gh repo clone` — this deliberately doesn't depend on
 # the `gh` CLI being authenticated at all (and wouldn't even apply to a
-# non-GitHub host). SSH auth goes through the 1Password SSH agent relay from
-# "1Password as SSH vault" above, which is already required for any git
+# non-GitHub host). SSH auth goes through the 1Password SSH agent (via Windows' ssh.exe on
+# WSL) from "1Password as SSH vault" above, which is already required for any git
 # push/pull regardless of host, so cloning works the moment that's set up.
 #
 # Only clones repos that aren't already present — this is additive like the
@@ -31,19 +31,30 @@
 set -euo pipefail
 
 # chezmoi runs this with bash, non-interactively — ~/.zshrc is never sourced,
-# so the relay it would have started isn't running and SSH_AUTH_SOCK isn't
-# set. On a first-ever apply that's guaranteed: step 13 only *installs* socat
-# and npiperelay a few steps earlier, and no zsh has existed since. Without
-# this, every clone below fails "Permission denied (publickey)".
+# so SSH_AUTH_SOCK isn't set and no agent has been selected. Without this,
+# every clone below fails "Permission denied (publickey)".
 {{ template "ssh-agent-sock.sh.tmpl" . }}
+
+# Which ssh-add/ssh git should use. On WSL with no local agent key, that's
+# Windows' signed ssh-add.exe/ssh.exe (1Password's pipe). GIT_SSH_COMMAND is
+# set explicitly because ~/.gitconfig's core.sshCommand may not be applied
+# yet on a first run.
+_ssh_add=ssh-add
+{{- if and (eq .chezmoi.os "linux") (contains "microsoft" (.chezmoi.kernel.osrelease | lower)) }}
+if [ -n "${DOTFILES_WIN_OPENSSH:-}" ]; then
+  _ssh_add="$DOTFILES_WIN_OPENSSH/ssh-add.exe"
+  export GIT_SSH_COMMAND="$DOTFILES_WIN_OPENSSH/ssh.exe -o StrictHostKeyChecking=accept-new"
+fi
+{{- end }}
 
 # Fail once, clearly, rather than as N identical clone failures — and before
 # creating any directories. Catches both "agent unreachable" and "agent
 # reachable but holds no keys" (ssh-add -l exits 2 and 1 respectively).
-if ! ssh-add -l >/dev/null 2>&1; then
-  echo "No SSH key available from the agent (SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-<unset>})." >&2
+if ! "$_ssh_add" -l >/dev/null 2>&1; then
+  echo "No SSH key available from the agent (SSH_AUTH_SOCK=${SSH_AUTH_SOCK:-<unset>}, ssh-add=$_ssh_add)." >&2
   echo "Enable 1Password -> Settings -> Developer -> 'Use the SSH Agent' (a GUI" >&2
-  echo "toggle, it can't be scripted), then re-run 'chezmoi apply -v' — a script" >&2
+  echo "toggle, it can't be scripted; on Windows also make sure the 'ssh-agent'" >&2
+  echo "service is stopped/disabled — see README), then re-run 'chezmoi apply -v' — a script" >&2
   echo "that failed isn't recorded as having run, so it retries on its own." >&2
   exit 1
 fi

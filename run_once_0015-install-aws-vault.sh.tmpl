@@ -11,10 +11,10 @@
 #
 # On WSL, it's a different story: 1Password's desktop-app integration
 # verifies the identity of the connecting binary (an Authenticode signature
-# check on Windows), so the socat/npiperelay relay used for the SSH agent
-# (run_once_0014) won't work here — a relayed connection would appear to come
-# from npiperelay.exe, not a signed 1Password-aware binary, and get
-# rejected. Instead, aws-vault is installed as a genuine Windows binary via
+# check on Windows), so a Linux binary or an unsigned relay can't work here.
+# (The same restriction — Smart App Control refusing unsigned binaries — is
+# why the old socat/npiperelay SSH agent relay was retired in favour of
+# Windows' signed ssh.exe.) Instead, aws-vault is installed as a genuine Windows binary via
 # winget and invoked through WSL's interop, so it's a real Windows process
 # talking to the Windows desktop app. See the aws-vault() shell function in
 # dot_zshrc.tmpl that makes this transparent to use.

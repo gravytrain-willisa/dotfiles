@@ -97,7 +97,8 @@ Chezmoi can't do these for you. Item numbers below refer to
 |---|---|
 | Windows Terminal | Settings → Startup → Default profile → your WSL Ubuntu distro (item 5, "Terminal prompt") |
 | Docker | Install Docker Desktop and enable WSL2 integration, if you want Docker image pulls (item 14, "Docker images") |
-| 1Password SSH Agent | 1Password → Settings → Developer → **Use the SSH Agent** (item 15, "1Password SSH agent relay") |
+| 1Password SSH Agent | 1Password → Settings → Developer → **Use the SSH Agent** (item 15, "1Password SSH agent") |
+| Windows `ssh-agent` service | Must be **Stopped and Disabled**, or it owns the `openssh-ssh-agent` pipe instead of 1Password (item 15, "1Password SSH agent"). Check from WSL: `powershell.exe -NoProfile -Command "Get-Service ssh-agent \| Format-List Name,Status,StartType"` — want `Stopped` / `Disabled` (Windows' default). If not, in an **Administrator** PowerShell: `Stop-Service ssh-agent; Set-Service ssh-agent -StartupType Disabled`, then toggle 1Password's "Use the SSH Agent" off and on. Verify with `ssh-add.exe -l` from WSL |
 | 1Password Windows Hello | 1Password → Settings → Security → **Unlock using Windows Hello** — required before the CLI integration toggle works (item 17, "aws-vault") |
 | 1Password CLI integration | 1Password → Settings → Developer → **Integrate with 1Password CLI** (item 17, "aws-vault") |
 | PowerShell execution policy | Only if you see "running scripts is disabled": `Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser` — a genuine security control, not a GUI toggle (item 5, "Terminal prompt") |
@@ -109,7 +110,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 | Step | Action |
 |---|---|
 | Docker | Install Docker Desktop, if you want Docker image pulls (item 14, "Docker images") |
-| 1Password SSH Agent | 1Password → Settings → Developer → **Use the SSH Agent** (item 15, "1Password SSH agent relay") |
+| 1Password SSH Agent | 1Password → Settings → Developer → **Use the SSH Agent** (item 15, "1Password SSH agent") |
 | 1Password CLI integration | 1Password → Settings → Developer → **Integrate with 1Password CLI** — required for `op-login` and 1Password-backed `aws-vault` (item 17, "aws-vault") |
 | aws-vault env vars | Set `1password.op_vault_id`/`1password.op_account_id` in [`.chezmoidata/dotfiles.yaml`](.chezmoidata/dotfiles.yaml), then `chezmoi apply` — required before `aws-vault`/`aws-login` work at all, same as WSL (item 17, "aws-vault"). `op_account_id` also pins the `op` CLI (`OP_ACCOUNT`) to that account when you have several signed in |
 
@@ -119,7 +120,7 @@ Chezmoi can't do these for you. Item numbers below refer to
 |---|---|
 | `op-login` API keys | Create 1Password items for Anthropic/OpenAI/Snyk (or whatever you add to `op-env-vars.txt`) (item 18, "Env vars from 1Password") |
 | Claude skills' secrets | Put skill API keys (Tempo, Atlassian) in the `AI Skills Access` vault, and the `Claude` service account's token in `GT Digital/Service Account Auth Token - Claude`. `op-login` exports it as `CLAUDE_OP_SERVICE_ACCOUNT_TOKEN` (item 18, "Claude's 1Password service account") |
-| `ssh-login` key | Add the `op://…/private key` reference of your 1Password SSH Key item (the one matching `git.signing_key_ref`) to [`ssh-keys.txt`](dot_config/dotfiles/ssh-keys.txt), then `ssh-login` (item 15, "1Password SSH agent relay") |
+| `ssh-login` key | Add the `op://…/private key` reference of your 1Password SSH Key item (the one matching `git.signing_key_ref`) to [`ssh-keys.txt`](dot_config/dotfiles/ssh-keys.txt), then `ssh-login` (item 15, "1Password SSH agent") |
 | Git commit signing | Set `git.signing_key_ref` in `.chezmoidata/dotfiles.yaml` to the `op://…/public key` reference of your SSH Key item; the public key is then fetched automatically (items 23 and 29). Also add it to GitHub as a Signing Key |
 
 ## Common commands
@@ -300,14 +301,14 @@ op item get "Foo (SSH)" --vault Private --fields id   # or by exact title
 then `op://Private/<id>/public key`. Applies to `ssh-keys.txt`,
 `git.signing_key_ref` and `op-env-vars.txt` alike.
 
-**1Password prompts on every `ssh`/`git` call (WSL)** — the socat/npiperelay
-relay makes 1Password see each connection as a different app, so its
-"remember approval" setting never applies. Run `ssh-login` once: it loads
-the key(s) from `ssh-keys.txt` into a local ssh-agent for
-`credential_cache_hours`, which ssh/git then prefer over the 1Password agent
-(falling back to it automatically when the keys expire). Trade-off: the
-unencrypted key sits in that agent's memory for the window. See
-`docs/setup-sequence.md` item 15.
+**1Password prompts on every `ssh`/`git` call (WSL)** — on WSL the 1Password
+agent is only reachable through Windows' `ssh.exe`, a new process for every
+connection, so 1Password's "remember approval" setting never applies. Run
+`ssh-login` once: it loads the key(s) from `ssh-keys.txt` into a local
+ssh-agent for `credential_cache_hours`, which ssh/git then prefer over
+`ssh.exe` (falling back to it automatically when the keys expire).
+Trade-off: the unencrypted key sits in that agent's memory for the window.
+See `docs/setup-sequence.md` item 15.
 
 **PowerShell says "running scripts is disabled on this system"** — the
 profile that adds the starship prompt is blocked by the default execution
@@ -322,49 +323,61 @@ agent isn't reachable. Almost always the one manual step that can't be
 scripted: 1Password desktop → Settings → Developer → **"Use the SSH Agent"**.
 Switch it on, then re-run `chezmoi apply -v` — a script that failed isn't
 recorded as having completed, so chezmoi retries it without needing to clear
-script state.
-Check what the agent is actually offering with:
+script state. On WSL check what the agent is actually offering with (the
+Windows binary — there is no Linux-side socket any more):
 ```bash
-ssh-add -l
+ssh-add.exe -l
 ```
-If that says "Could not open a connection to your authentication agent" in a
-*new* WSL terminal, the relay itself didn't start — confirm
-`~/.local/bin/npiperelay.exe` exists and `socat` is installed (both come from
-`docs/setup-sequence.md` item 15).
+(Plain `ssh-add -l` only reflects the local `ssh-login` agent.)
 
-**`ssh-add -l` says "error fetching identities: communication with agent
-failed"** even though `~/.1password/agent.sock` exists, `socat` is running,
-and `npiperelay.exe` is present — different failure from the one above: the
-relay *started* but can't actually exec the Windows binary. Confirm with:
+**`ssh-add.exe -l` says "error fetching identities", or lists nothing, even
+with "Use the SSH Agent" on (WSL)** — the Windows `ssh-agent` service is
+probably holding the `\\.\pipe\openssh-ssh-agent` pipe instead of 1Password.
+Check from WSL:
 ```bash
-cat /proc/sys/fs/binfmt_misc/WSLInterop
+powershell.exe -NoProfile -Command "Get-Service ssh-agent | Format-List Name,Status,StartType"
 ```
-If that file doesn't exist (or reports disabled), WSL's interop registration
-for launching Windows `.exe`s from WSL never came up on this boot — a
-one-off race, seen in particular with `systemd=true` set in `wsl.conf`,
-distinct from the WSL/1Password config itself. Fix with a full restart of
-the WSL VM (not just a new terminal), from Windows (PowerShell or Command
-Prompt, not WSL):
+You want `Status : Stopped` and `StartType : Disabled` (the Windows default).
+If it's running, or set to Automatic/Manual, switch it off from an
+**Administrator** PowerShell on Windows (this can't be done from a normal
+WSL shell):
 ```powershell
-wsl --shutdown
+Stop-Service ssh-agent
+Set-Service ssh-agent -StartupType Disabled
 ```
-then reopen WSL and retry `ssh-add -l`.
+(or `services.msc` → "OpenSSH Authentication Agent" → Startup type:
+Disabled → Stop). Then toggle 1Password → Settings → Developer → "Use the SSH
+Agent" off and on so it re-creates the pipe, and retry `ssh-add.exe -l`.
+
+**`~/.local/bin/npiperelay.exe: Invalid argument`, or Windows reports Code
+Integrity event 3077 (Event Viewer → Applications and Services Logs →
+Microsoft → Windows → CodeIntegrity → Operational)** — that was the old
+socat/npiperelay SSH agent relay. `npiperelay.exe` is unsigned, and Windows
+**Smart App Control** (or an App Control/WDAC policy) refuses to run unsigned
+binaries; Defender exclusions don't apply to it. The relay has been removed:
+SSH now goes through the local `ssh-login` agent or Microsoft's signed
+`ssh.exe`/`ssh-keygen.exe`. `chezmoi apply` cleans up the old unit and binary
+(`run_onchange_0020-remove-ssh-agent-relay.sh.tmpl`). Check the Smart App
+Control state with:
+```bash
+powershell.exe -NoProfile -Command "(Get-ItemProperty 'HKLM:\SYSTEM\CurrentControlSet\Control\CI\Policy').VerifiedAndReputablePolicyState"
+```
+(`1` = enforcing, `2` = evaluation, `0` = off). Turning Smart App Control off
+is permanent without a Windows reset, so prefer keeping it on.
 
 **An IDE's own git integration (IntelliJ, VS Code, etc.) gets `Permission
 denied (publickey)` on a WSL project even though `git pull`/`git push` work
 fine from a terminal** — the IDE invokes `git` via `wsl.exe -d <distro> -e
 git ...` directly, which execs straight into the target command rather than
 going through a login shell, so it skips PAM entirely — confirmed by
-`wsl.exe -e printenv SSH_AUTH_SOCK` coming back empty even with the systemd
-relay active and `SSH_AUTH_SOCK` correctly set in `/etc/environment`. Neither
-`~/.zshrc`'s export nor `/etc/environment` ever reaches that git process, so
-the systemd-relay fix (`docs/setup-sequence.md` item 15) alone doesn't fix
-this case. The actual fix is `core.sshCommand` in `dot_gitconfig.tmpl`,
-pointing at `~/.local/bin/git-ssh-with-agent`
-(`dot_local/bin/executable_git-ssh-with-agent.tmpl`) — a wrapper that sets
-`SSH_AUTH_SOCK` itself (reusing `.chezmoitemplates/ssh-agent-sock.sh.tmpl`)
-before `exec ssh "$@"`, so git's ssh always has a working agent socket
-regardless of how git itself was launched. Verify with the same
+`wsl.exe -e printenv SSH_AUTH_SOCK` coming back empty even with it set in
+`/etc/environment`. Neither `~/.zshrc`'s export nor `/etc/environment` ever
+reaches that git process. The fix is `core.sshCommand` in
+`dot_gitconfig.tmpl`, pointing at `~/.local/bin/git-ssh-with-agent`
+(`dot_local/bin/executable_git-ssh-with-agent.tmpl`) — a wrapper that picks
+the agent itself (reusing `.chezmoitemplates/ssh-agent-sock.sh.tmpl`): the
+local `ssh-login` agent via `ssh`, or Windows' `ssh.exe` when that holds no
+key, so git always has a working agent regardless of how it was launched. Verify with the same
 direct-`wsl.exe` invocation IntelliJ uses:
 ```bash
 wsl.exe -d <distro> --cd <project-dir> -e git fetch origin --prune
@@ -536,7 +549,7 @@ source dir directly instead.
 Shared config / data
   .chezmoidata/dotfiles.yaml              shared data/config (see "How to customize")
   .chezmoitemplates/brew-shellenv.sh.tmpl shared brew-PATH snippet
-  .chezmoitemplates/ssh-agent-sock.sh.tmpl shared 1Password-agent/relay snippet
+  .chezmoitemplates/ssh-agent-sock.sh.tmpl shared SSH-agent selection snippet (local agent / ssh.exe / macOS 1Password)
   .chezmoitemplates/sudo-timeout-backstop.sh.tmpl shared sudo-cleanup-backstop snippet
   .chezmoitemplates/jrebel-install.sh.tmpl shared JRebel agent download/extract snippet
   .chezmoitemplates/git-signing-key.sh.tmpl shared git signing public-key fetch snippet
@@ -564,7 +577,6 @@ Shell/profile templates -> target files
   dot_gitconfig.tmpl                    -> ~/.gitconfig
   dot_aws/config.tmpl                   -> ~/.aws/config
   private_dot_ssh/config.tmpl           -> ~/.ssh/config (dir mode 0700)
-  dot_config/systemd/user/ssh-agent-relay.service -> ~/.config/systemd/user/ssh-agent-relay.service (WSL only)
 
 Utility scripts -> target files
   dot_local/bin/executable_connect-to-aws-jump-server.sh.tmpl
@@ -588,13 +600,12 @@ Install scripts, in execution order (see docs/setup-sequence.md)
   run_onchange_0011-pyenv-versions.sh.tmpl
   run_onchange_0012-pip-packages.sh.tmpl
   run_onchange_0013-docker-images.sh.tmpl
-  run_once_0014-install-1password-ssh-relay.sh.tmpl
   run_once_0015-install-aws-vault.sh.tmpl
   run_once_after_0016-handoff-shell-to-brew.sh.tmpl
   run_once_after_0017-handoff-chezmoi-to-brew.sh.tmpl
   run_onchange_0018-clone-git-repos.sh.tmpl
   run_once_0019-configure-powershell-profile.sh.tmpl
-  run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl
+  run_onchange_0020-remove-ssh-agent-relay.sh.tmpl      (WSL only; retires the old relay)
   run_once_0021-install-junie-linux.sh.tmpl             (Linux only)
   run_once_after_0022-remove-sudo-timeout.sh.tmpl       (Linux only, runs last)
   run_onchange_0023-configure-tmp-cleanup-timer.sh.tmpl (WSL only)

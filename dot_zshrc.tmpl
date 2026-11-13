@@ -278,15 +278,15 @@ _aws_cache_usable() {
 
 # ssh-login [--refresh] — loads the SSH key(s) listed in ssh-keys.txt into a
 # local ssh-agent for DOTFILES_CACHE_TTL seconds. Why not just use the
-# 1Password SSH agent: on WSL it's reached through the socat/npiperelay
-# relay, so 1Password sees every connection as a different application and
-# re-prompts for each one — its "remember approval" setting never applies.
-# This trades that per-use approval for one `op read` per key per TTL
-# window. The key goes straight from op into ssh-add's stdin (never to disk)
+# 1Password SSH agent: on WSL it's only reachable from Windows binaries
+# (ssh.exe, a new process per connection), so 1Password re-prompts for each
+# one — its "remember approval" setting never applies. This trades that
+# per-use approval for one `op read` per key per TTL window. The key goes straight from op into ssh-add's stdin (never to disk)
 # and ssh-add -t makes the agent drop it by itself on expiry.
 # .chezmoitemplates/ssh-agent-sock.sh.tmpl (shared with the git wrappers)
 # and _ssh_select_agent below prefer this agent while it holds a key, and
-# fall back to the 1Password one when it doesn't.
+# fall back to the 1Password one (macOS) or Windows' ssh.exe (WSL) when it
+# doesn't.
 _ssh_local_agent_running() {
   SSH_AUTH_SOCK="$SSH_LOCAL_AGENT_SOCK" ssh-add -l >/dev/null 2>&1
   [ $? -ne 2 ] # 0 = has keys, 1 = reachable but empty, 2 = no agent
@@ -295,11 +295,16 @@ _ssh_local_agent_running() {
 _ssh_select_agent() {
   # Unset when ssh-agent-sock.sh.tmpl doesn't manage the agent (bare-metal
   # Linux) — leave whatever agent the user already has alone.
-  [ -n "$DOTFILES_1P_SSH_AUTH_SOCK" ] || return 0
+  [ -n "$DOTFILES_SSH_AGENT_MANAGED" ] || return 0
   if SSH_AUTH_SOCK="$SSH_LOCAL_AGENT_SOCK" ssh-add -l >/dev/null 2>&1; then
     export SSH_AUTH_SOCK="$SSH_LOCAL_AGENT_SOCK"
-  else
+  elif [ -n "$DOTFILES_1P_SSH_AUTH_SOCK" ]; then
     export SSH_AUTH_SOCK="$DOTFILES_1P_SSH_AUTH_SOCK"
+  else
+    # WSL: no Linux-reachable 1Password agent (see ssh-agent-sock.sh.tmpl).
+    # Keep Linux ssh pointed at nothing rather than a dead socket; the git
+    # wrappers fall back to Windows' ssh.exe instead.
+    unset SSH_AUTH_SOCK
   fi
 }
 # Re-checked before every prompt so an already-open shell picks up an

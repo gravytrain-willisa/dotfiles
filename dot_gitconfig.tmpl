@@ -58,12 +58,12 @@
   # enforcement backstop; this just stops git from doing its own
   # additional, redundant conversion on top of that.
   autocrlf = false
-  # Routes every ssh git does through a wrapper that sets SSH_AUTH_SOCK
-  # itself rather than trusting it to already be in the environment — an
+  # Routes every ssh git does through a wrapper that picks the agent
+  # itself (local ssh-login agent, or Windows' ssh.exe on WSL) rather than
+  # trusting SSH_AUTH_SOCK to already be in the environment — an
   # IDE's own git integration on WSL (IntelliJ, VS Code) launches git via
   # `wsl.exe -e`, which skips login shells/PAM entirely, so neither
-  # dot_zshrc.tmpl's export nor /etc/environment (see
-  # run_onchange_0020-enable-ssh-agent-relay-service.sh.tmpl) ever reaches
+  # dot_zshrc.tmpl's export nor /etc/environment ever reaches
   # it — that combination previously produced "Permission denied
   # (publickey)" from the IDE while a terminal in the same WSL instance
   # worked fine. See dot_local/bin/executable_git-ssh-with-agent.tmpl.
