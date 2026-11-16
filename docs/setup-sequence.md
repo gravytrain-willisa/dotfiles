@@ -825,6 +825,11 @@ the rationale behind a specific step, or before changing one (see CLAUDE.md's
     access token with `repo` and `read:org` scopes) is enough to
     authenticate `gh` non-interactively once `op-login` has run. Without it,
     authenticating `gh` is entirely on you — nothing here runs or checks it.
+    One override: if `CLAUDE_GH_TOKEN` is set (by `source claude-gh-env`
+    from `gt-ai-plugins/tools/claude-github-app`), `env.sh` exports it as
+    `GH_TOKEN` *after* loading the op cache, so `gh` keeps acting as the
+    `gravytrain-claude[bot]` GitHub App in child shells (Claude Code's Bash
+    tool included) instead of falling back to your personal PAT.
 
     **Claude's 1Password service account (`AI Skills Access` vault).**
     Secrets that Claude Code skills need (the Tempo and Atlassian API keys
